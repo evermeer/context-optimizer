@@ -1,5 +1,14 @@
 # Context Optimizer
 
+[![npm](https://img.shields.io/npm/v/@evermeer/context-optimizer?logo=npm)](https://www.npmjs.com/package/@evermeer/context-optimizer)
+[![license](https://img.shields.io/npm/l/@evermeer/context-optimizer)](https://github.com/evermeer/context-optimizer/blob/main/LICENSE)
+[![node](https://img.shields.io/node/v/@evermeer/context-optimizer?logo=node.js&logoColor=white)](https://nodejs.org)
+[![python](https://img.shields.io/badge/python-3.9%2B-blue?logo=python&logoColor=white)](https://www.python.org)
+[![status](https://img.shields.io/badge/status-experimental-orange)](#)
+[![platforms](https://img.shields.io/badge/for-OpenCode%20%26%20Claude%20Code-8A2BE2)](#)
+
+**Keep your coding agent's context small.** When a session gets compacted, Context Optimizer reranks the relevant parts, drops duplicates, and compresses the rest with a local ML pipeline ([LLMLingua-2](https://github.com/microsoft/LLMLingua) + [Sentence Transformers](https://github.com/huggingface/sentence-transformers)) — so more of the window stays useful and fewer tokens get billed. Everything runs on your machine; nothing is sent to a third party.
+
 > [!WARNING]
 > This plugin is still experimental. (It works on my machine)
 > I'm investigating what options there are for context deduplication (removes repeated info), reranking (removes irrelevant context) and compression. 
@@ -13,7 +22,7 @@ This plugin is currently available for **OpenCode** and **Claude Code**. There a
 
 This plugin uses [Microsoft LLMLingua-2](https://github.com/microsoft/LLMLingua) for context compression and [Huggingface Sentence transformers](https://github.com/huggingface/sentence-transformers) for reranking and deduplication.
 
-Expect roughly up to 30% token reduction on long sessions.
+On the context that actually gets compacted, expect roughly **40–60% fewer tokens** (LLMLingua-2 at the default `0.5` rate, after rerank + dedup pruning). Whole-session savings depend on how much of the session is compactable — and the exact `% saved` is measured and reported live on every compaction, so you never have to trust a headline number.
 
 ## Architecture
 
