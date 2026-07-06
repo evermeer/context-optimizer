@@ -65,7 +65,7 @@ class ContextOptimizerCliTests(unittest.TestCase):
                 def __init__(self, **kwargs):
                     pass
 
-                def optimize(self, query, graph_ctx=None, memory_ctx=None):
+                def optimize(self, query, docs=None):
                     return "stub"
             """,
         )
@@ -83,7 +83,7 @@ class ContextOptimizerCliTests(unittest.TestCase):
                 def __init__(self, **kwargs):
                     pass
 
-                def optimize(self, query, graph_ctx=None, memory_ctx=None):
+                def optimize(self, query, docs=None):
                     return "stub"
             """,
         )
@@ -100,7 +100,7 @@ class ContextOptimizerCliTests(unittest.TestCase):
                 def __init__(self, **kwargs):
                     pass
 
-                def optimize(self, query, graph_ctx=None, memory_ctx=None):
+                def optimize(self, query, docs=None):
                     return "stub"
             """,
         )
@@ -118,7 +118,7 @@ class ContextOptimizerCliTests(unittest.TestCase):
                 def __init__(self, **kwargs):
                     self.kwargs = kwargs
 
-                def optimize(self, query, graph_ctx=None, memory_ctx=None):
+                def optimize(self, query, docs=None):
                     return "should not be called"
             """,
         )
@@ -140,7 +140,7 @@ class ContextOptimizerCliTests(unittest.TestCase):
                 def __init__(self, **kwargs):
                     pass
 
-                def optimize(self, query, graph_ctx=None, memory_ctx=None):
+                def optimize(self, query, docs=None):
                     return "stub"
             """,
         )
@@ -158,8 +158,8 @@ class ContextOptimizerCliTests(unittest.TestCase):
                 def __init__(self, **kwargs):
                     self.kwargs = kwargs
 
-                def optimize(self, query, graph_ctx=None, memory_ctx=None):
-                    return f"{query}:{'|'.join(graph_ctx)}:{self.kwargs['compression_rate']}"
+                def optimize(self, query, docs=None):
+                    return f"{query}:{'|'.join(docs)}:{self.kwargs['compression_rate']}"
             """,
         )
 
@@ -178,37 +178,14 @@ class ContextOptimizerCliTests(unittest.TestCase):
                 def __init__(self, **kwargs):
                     self.kwargs = kwargs
 
-                def optimize(self, query, graph_ctx=None, memory_ctx=None, docs=None, model=None, options=None):
-                    return f"{self.kwargs.get('min_input_size')}:{options['compression_rate']}"
+                def optimize(self, query, docs=None):
+                    return f"{self.kwargs.get('min_input_size')}:{self.kwargs['compression_rate']}"
             """,
         )
 
         data = json.loads(proc.stdout)
         self.assertTrue(data["ok"])
         self.assertEqual(data["optimized_context"], "None:0.25")
-        self.assertEqual(proc.returncode, 0)
-
-    def test_cli_exposes_model_and_policy_inputs_to_optimizer(self):
-        proc = run_cli_with_stub(
-            {
-                "query": "hello",
-                "docs": ["alpha", "beta"],
-                "model": "gpt-4o-mini",
-                "options": {"compression_rate": 0.25, "protected_prefixes": ["protected:"]},
-            },
-            """
-            class ContextOptimizer:
-                def __init__(self, **kwargs):
-                    self.kwargs = kwargs
-
-                def optimize(self, query, graph_ctx=None, memory_ctx=None, docs=None, model=None, options=None):
-                    return f"{model}:{options['compression_rate']}:{options['protected_prefixes'][0]}"
-            """,
-        )
-
-        data = json.loads(proc.stdout)
-        self.assertTrue(data["ok"])
-        self.assertEqual(data["optimized_context"], "gpt-4o-mini:0.25:protected:")
         self.assertEqual(proc.returncode, 0)
 
     def test_cli_returns_non_zero_for_runtime_error(self):

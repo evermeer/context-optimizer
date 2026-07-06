@@ -2,11 +2,7 @@
  * OpenCode adapter. Hooks into `experimental.session.compacting` and exposes
  * the /context-optimizer slash commands. All business logic lives in core.
  */
-import {
-  createSessionWarningTracker,
-  runOptimizer,
-  type SessionWarningTracker,
-} from "../../core/src/bridge.js"
+import { runOptimizer } from "../../core/src/bridge.js"
 import {
   SAFE_CONFIG_KEYS,
   normalizeConfigKey,
@@ -74,19 +70,9 @@ function normalizeCommandName(commandName: unknown): string {
 }
 
 function resolveToastClient(dependencies: any = {}, input: any = {}, output: any = {}) {
-  const client = dependencies.client || dependencies.ui || input?.client || output?.client || null
-  if (!client) return null
-
-  const candidates = [
-    client.tui?.showToast,
-    client.showToast,
-    client.toast?.show,
-    client.toast,
-    client.tui?.toast,
-  ]
-
-  const toastFn = candidates.find((candidate) => typeof candidate === "function")
-  return toastFn ? toastFn.bind(client.tui || client) : null
+  const client = dependencies.client || input?.client || output?.client || null
+  const toastFn = client?.tui?.showToast
+  return typeof toastFn === "function" ? toastFn.bind(client.tui) : null
 }
 
 async function showToast(toastFn: any, message: string, variant = "default"): Promise<void> {
@@ -105,7 +91,6 @@ export const ContextOptimizerPlugin = async (dependencies: any = {}) => {
   try {
     const cliPath = pythonCliPath()
     const run = dependencies.runOptimizer || runOptimizer
-    const tracker: SessionWarningTracker = createSessionWarningTracker()
     writeLog(`[context-optimizer] plugin loaded (log=${logPath()}, bridge=${cliPath})`)
 
     const optimizeContext = async (input: any, output: any) => {
@@ -138,7 +123,6 @@ export const ContextOptimizerPlugin = async (dependencies: any = {}) => {
         },
         sessionID: input?.sessionID,
         cliPath,
-        tracker,
       })
 
       writeLog(formatOutcomeMessage(result))
@@ -211,7 +195,6 @@ export const ContextOptimizerPlugin = async (dependencies: any = {}) => {
           },
           sessionID,
           cliPath,
-          tracker,
         })
 
         reply(buildCommandOutput("compression run", formatJsonBlock(result)))

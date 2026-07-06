@@ -23,14 +23,9 @@ class ContextOptimizer:
         compression_rate=0.5,
         max_chunks=6,
         dedupe_threshold=0.9,
-        graph_budget_chars=1200,
-        memory_budget_chars=1200,
-        docs_budget_chars=1600,
         total_prune_budget_chars=4000,
-        model_limits=None,
         error_prefixes=None,
-        protected_prefixes=None,
-    ): 
+    ):
         device = "cuda" if torch is not None and torch.cuda.is_available() else "cpu"
         # Keep the LLMLingua-2 algorithm on both devices; on CPU use the smaller
         # multilingual BERT checkpoint instead of the large xlm-roberta model so
@@ -56,21 +51,10 @@ class ContextOptimizer:
         self.compression_rate = compression_rate
         self.max_chunks = max_chunks
         self.dedupe_threshold = dedupe_threshold
-        self.graph_budget_chars = graph_budget_chars
-        self.memory_budget_chars = memory_budget_chars
-        self.docs_budget_chars = docs_budget_chars
         self.total_prune_budget_chars = total_prune_budget_chars
-        self.model_limits = model_limits or {}
         self.error_prefixes = tuple(error_prefixes or ("[error]", "[context-optimizer] error"))
-        self.protected_prefixes = tuple(protected_prefixes or ("protected:",))
 
         log("optimizer initialized")
-
-    def rerank(self, query, docs):
-        pairs = [(query, doc) for doc in docs]
-        scores = self.reranker.predict(pairs)
-        ranked = [doc for _, doc in sorted(zip(scores, docs), key=lambda x: x[0], reverse=True)]
-        return ranked[: self.max_chunks]
 
     def _normalize_doc(self, doc):
         if isinstance(doc, str):
@@ -112,108 +96,36 @@ class ContextOptimizer:
 
         return unique_docs
 
-    def _budget_for_bucket(self, bucket_name):
-        if bucket_name == "graph_ctx":
-            return self.graph_budget_chars
-        if bucket_name == "memory_ctx":
-            return self.memory_budget_chars
-        return self.docs_budget_chars
+    def _pre_prune(self, query, docs):
+        """Rank + dedupe the docs and keep the best ones that fit the char budget."""
+        if not docs or self.total_prune_budget_chars <= 0:
+            return []
 
-    def _pre_prune(self, query, graph_ctx, memory_ctx, docs):
-        buckets = {
-            "graph_ctx": [
-                normalized
-                for normalized in (self._normalize_doc(doc) for doc in graph_ctx)
-                if normalized
-            ],
-            "memory_ctx": [
-                normalized
-                for normalized in (self._normalize_doc(doc) for doc in memory_ctx)
-                if normalized
-            ],
-            "docs": [
-                normalized
-                for normalized in (self._normalize_doc(doc) for doc in docs)
-                if normalized
-            ],
-        }
+        scores = self.reranker.predict([(query, doc) for doc in docs])
+        score_for_doc = {}
+        for score, doc in zip(scores, docs):
+            score_for_doc.setdefault(doc, score)
 
-        bucket_stats = {}
-
-        for bucket_name, bucket in buckets.items():
-            if not bucket:
-                continue
-
-            ranked_with_scores = sorted(
-                zip(self.reranker.predict([(query, doc) for doc in bucket]), bucket),
-                key=lambda x: x[0],
-                reverse=True,
-            )
-            ranked_docs = self.dedupe([doc for _, doc in ranked_with_scores])
-            score_for_doc = {}
-
-            for score, doc in ranked_with_scores:
-                score_for_doc.setdefault(doc, score)
-
-            total_score = sum(max(score_for_doc.get(doc, 0), 0) for doc in ranked_docs)
-            total_chars = sum(len(doc) for doc in ranked_docs)
-
-            bucket_stats[bucket_name] = {
-                "ranked": ranked_docs,
-                "scores": score_for_doc,
-                "total_score": total_score,
-                "total_chars": total_chars,
-            }
+        ranked = self.dedupe(
+            [doc for _, doc in sorted(zip(scores, docs), key=lambda x: x[0], reverse=True)]
+        )
 
         pruned = []
         remaining = self.total_prune_budget_chars
-        active_buckets = [name for name in ("graph_ctx", "memory_ctx", "docs") if name in bucket_stats]
 
-        if not active_buckets or remaining <= 0:
-            return pruned
+        for doc in ranked:
+            if remaining <= 0:
+                break
 
-        ordered_buckets = sorted(
-            active_buckets,
-            key=lambda name: (
-                bucket_stats[name]["total_score"] / max(bucket_stats[name]["total_chars"], 1),
-                bucket_stats[name]["total_score"],
-                -bucket_stats[name]["total_chars"],
-            ),
-            reverse=True,
-        )
-
-        for bucket_name in ordered_buckets:
-            stats = bucket_stats.get(bucket_name)
-            if stats is None or remaining <= 0:
+            if len(doc) > remaining:
+                # Keep one high-value oversized doc rather than returning nothing.
+                if not pruned and score_for_doc.get(doc, 0) > 0:
+                    pruned.append(doc)
+                    break
                 continue
 
-            bucket_budget = remaining
-            bucket_total = 0
-
-            for doc in stats["ranked"]:
-                score = stats["scores"].get(doc, 0)
-                doc_len = len(doc)
-                if doc_len > bucket_budget:
-                    if bucket_total == 0 and score > 0:
-                        pruned.append(doc)
-                        remaining -= doc_len
-
-                        if remaining <= 0:
-                            return pruned
-
-                        break
-
-                    continue
-
-                if bucket_total + doc_len > bucket_budget:
-                    continue
-
-                pruned.append(doc)
-                bucket_total += doc_len
-                remaining -= doc_len
-
-                if remaining <= 0:
-                    return pruned
+            pruned.append(doc)
+            remaining -= len(doc)
 
         return pruned
 
@@ -228,54 +140,18 @@ class ContextOptimizer:
 
         return compressed["compressed_prompt"]
 
-    def optimize(self, query, graph_ctx=None, memory_ctx=None, docs=None, model=None, options=None):
-        graph_ctx = graph_ctx or []
-        memory_ctx = memory_ctx or []
-        docs = docs or []
-        options = options or {}
+    def optimize(self, query, docs=None):
+        docs = [
+            normalized
+            for normalized in (self._normalize_doc(doc) for doc in (docs or []))
+            if normalized
+        ]
+        docs = self._purge_error_docs(docs)
 
-        # Protect tagged docs from the error purge / pre-prune path while still
-        # allowing the normal rerank/compress flow to act on them.
-        graph_ctx = [doc for doc in graph_ctx if self._normalize_doc(doc)]
-        memory_ctx = [doc for doc in memory_ctx if self._normalize_doc(doc)]
-        docs = [doc for doc in docs if self._normalize_doc(doc)]
-
-        graph_ctx = self._purge_error_docs([self._normalize_doc(doc) for doc in graph_ctx])
-        memory_ctx = self._purge_error_docs([self._normalize_doc(doc) for doc in memory_ctx])
-        docs = self._purge_error_docs([self._normalize_doc(doc) for doc in docs])
-
-        effective_compression_rate = self.compression_rate
-        effective_max_chunks = self.max_chunks
-
-        limit = None
-        if isinstance(model, str) and model:
-            limit = self.model_limits.get(model)
-        if limit is None:
-            limit = self.model_limits.get(options.get("model") or "default")
-
-        if isinstance(limit, dict):
-            if isinstance(limit.get("compression_rate"), (int, float)):
-                effective_compression_rate = limit["compression_rate"]
-            if isinstance(limit.get("max_chunks"), int):
-                effective_max_chunks = limit["max_chunks"]
-
-        combined = self._pre_prune(query, graph_ctx, memory_ctx, docs)
-
-        if not combined:
+        # _pre_prune already returns docs ranked best-first, so capping to
+        # max_chunks is a plain slice.
+        pruned = self._pre_prune(query, docs)
+        if not pruned:
             return ""
 
-        # Deduplicate before reranking so duplicate chunks do not consume the
-        # limited max_chunks budget that rerank applies.
-        unique = self.dedupe(combined)
-        original_max_chunks = self.max_chunks
-        original_compression_rate = self.compression_rate
-        try:
-            self.max_chunks = effective_max_chunks
-            self.compression_rate = effective_compression_rate
-            ranked = self.rerank(query, unique)
-            compressed = self.compress(ranked)
-        finally:
-            self.max_chunks = original_max_chunks
-            self.compression_rate = original_compression_rate
-
-        return compressed
+        return self.compress(pruned[: self.max_chunks])

@@ -1,5 +1,4 @@
 import json
-import inspect
 import importlib
 import sys
 from typing import Any, Dict, NoReturn
@@ -43,7 +42,6 @@ def main() -> None:
     docs = payload.get("docs") or []
     query = payload.get("query", "")
     options = payload.get("options") or {}
-    model = payload.get("model", "")
 
     if not isinstance(docs, list):
         emit_error("invalid_input", "docs must be a list of strings")
@@ -80,18 +78,7 @@ def main() -> None:
         if optimizer is None:
             emit_error("dependency_missing", "ContextOptimizer import unavailable")
 
-        optimize_kwargs = {"query": query, "graph_ctx": safe_docs, "memory_ctx": []}
-        try:
-            signature = inspect.signature(optimizer.optimize)
-            if "model" in signature.parameters:
-                optimize_kwargs["model"] = model
-            if "options" in signature.parameters:
-                optimize_kwargs["options"] = options
-        except (TypeError, ValueError):
-            optimize_kwargs["model"] = model
-            optimize_kwargs["options"] = options
-
-        optimized = optimizer.optimize(**optimize_kwargs)
+        optimized = optimizer.optimize(query=query, docs=safe_docs)
     except Exception as exc:
         emit_error("runtime_error", str(exc))
 

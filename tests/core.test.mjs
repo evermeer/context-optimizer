@@ -18,14 +18,12 @@ test("buildPayload flattens context strings and sums size", () => {
   assert.equal(payload.size, 2)
 })
 
-test("buildPayload separates error and protected docs", () => {
+test("buildPayload keeps error-prefixed docs for the Python bridge to purge", () => {
   const payload = core.buildPayload({}, {
-    context: ["[error] boom", "protected: keep me", "normal doc"],
+    context: ["[error] boom", "normal doc"],
   })
 
-  assert.deepEqual(payload.docs, ["normal doc"])
-  assert.deepEqual(payload.errorDocs, ["[error] boom"])
-  assert.deepEqual(payload.protectedDocs, ["protected: keep me"])
+  assert.deepEqual(payload.docs, ["[error] boom", "normal doc"])
 })
 
 test("formatSizeSummary reports savings percentage", () => {

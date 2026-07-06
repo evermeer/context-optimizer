@@ -36,29 +36,16 @@ export function normalizePythonResult(stdout: string): OptimizerResult {
   }
 }
 
-export interface SessionWarningTracker {
-  warnOnce(sessionID: string | undefined, message: string): boolean
-}
+// ponytail: unbounded per-process set; entries are tiny strings, add eviction if it ever matters.
+const warned = new Set<string>()
 
-export function createSessionWarningTracker(): SessionWarningTracker {
-  let currentSessionID: string | null = null
-  let currentWarnings = new Set<string>()
+export function warnOnce(sessionID: string | undefined, message: string): boolean {
+  const key = `${sessionID || "global"}:${message}`
+  if (warned.has(key)) return false
 
-  return {
-    warnOnce(sessionID, message) {
-      const activeSessionID = sessionID || "global"
-      if (activeSessionID !== currentSessionID) {
-        currentSessionID = activeSessionID
-        currentWarnings = new Set()
-      }
-
-      if (currentWarnings.has(message)) return false
-
-      currentWarnings.add(message)
-      writeLog(`[context-optimizer] ${message}`)
-      return true
-    },
-  }
+  warned.add(key)
+  writeLog(`[context-optimizer] ${message}`)
+  return true
 }
 
 export interface RunOptimizerOptions {
@@ -66,7 +53,6 @@ export interface RunOptimizerOptions {
   sessionID?: string
   cliPath?: string
   timeoutMs?: number
-  tracker?: SessionWarningTracker
 }
 
 /** Spawn the Python bridge, feed it the payload as JSON on stdin, and parse the JSON reply. */
@@ -75,10 +61,8 @@ export function runOptimizer({
   sessionID,
   cliPath = pythonCliPath(),
   timeoutMs = resolveEffectiveConfig().timeout_ms,
-  tracker,
 }: RunOptimizerOptions): Promise<OptimizerResult> {
   const python = resolvePythonCommand()
-  const warnTracker = tracker || createSessionWarningTracker()
 
   return new Promise<OptimizerResult>((resolve) => {
     const child = childProcess.spawn(python[0], [...python.slice(1), cliPath], {
@@ -138,7 +122,7 @@ export function runOptimizer({
     }
   }).then((result) => {
     if (!result.ok) {
-      warnTracker.warnOnce(sessionID || "global", `${result.errorCode}: ${result.message}`)
+      warnOnce(sessionID, `${result.errorCode}: ${result.message}`)
     }
     return result
   })

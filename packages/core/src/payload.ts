@@ -1,7 +1,5 @@
 import { resolveEffectiveConfig } from "./config.js"
 
-export const DEFAULT_ERROR_PREFIXES = ["[error]", "[context-optimizer] error"]
-export const DEFAULT_PROTECTED_PREFIXES = ["protected:"]
 export const AUTO_COMPRESSION_THRESHOLD_CHARS = 4000
 export const DEFAULT_QUERY = "Optimize the most relevant context for compaction."
 
@@ -9,8 +7,6 @@ export interface OptimizerPayload {
   model: string
   query: string
   docs: string[]
-  errorDocs: string[]
-  protectedDocs: string[]
   size: number
   options: Record<string, unknown>
 }
@@ -26,10 +22,6 @@ export interface OptimizerResult {
   message?: string
 }
 
-export function matchesPrefix(value: string, prefixes: string[]): boolean {
-  return prefixes.some((prefix) => value.toLowerCase().startsWith(prefix.toLowerCase()))
-}
-
 export function buildPayload(
   input: Record<string, any> = {},
   output: Record<string, any> = {},
@@ -39,17 +31,11 @@ export function buildPayload(
     ...(input.options && typeof input.options === "object" ? input.options : {}),
     ...(output.options && typeof output.options === "object" ? output.options : {}),
   }
-  const context: string[] = Array.isArray(output.context)
+  // The Python bridge purges "[error]"-prefixed docs itself; send everything.
+  const docs: string[] = Array.isArray(output.context)
     ? output.context.filter((value: unknown): value is string => typeof value === "string" && !!value.trim())
     : []
-  const size = context.reduce((total, value) => total + value.length, 0)
-  const errorDocs = context.filter((value) => matchesPrefix(value.trim(), DEFAULT_ERROR_PREFIXES))
-  const protectedDocs = context.filter((value) => matchesPrefix(value.trim(), DEFAULT_PROTECTED_PREFIXES))
-  const docs = context.filter(
-    (value) =>
-      !matchesPrefix(value.trim(), DEFAULT_ERROR_PREFIXES) &&
-      !matchesPrefix(value.trim(), DEFAULT_PROTECTED_PREFIXES),
-  )
+  const size = docs.reduce((total, value) => total + value.length, 0)
   const modelLimits = resolveEffectiveConfig().model_limits
   const modelLimit = model && modelLimits && typeof modelLimits === "object" ? modelLimits[model] : null
 
@@ -63,8 +49,6 @@ export function buildPayload(
     model,
     query: output.prompt || input.prompt || DEFAULT_QUERY,
     docs,
-    errorDocs,
-    protectedDocs,
     size,
     options,
   }
@@ -72,16 +56,12 @@ export function buildPayload(
 
 export function summarizeContext(payload: Partial<OptimizerPayload> = {}) {
   const docs = Array.isArray(payload.docs) ? payload.docs : []
-  const errorDocs = Array.isArray(payload.errorDocs) ? payload.errorDocs : []
-  const protectedDocs = Array.isArray(payload.protectedDocs) ? payload.protectedDocs : []
   const size = Number.isFinite(payload.size)
     ? (payload.size as number)
     : docs.reduce((total, value) => total + String(value).length, 0)
 
   return {
     docs: docs.length,
-    errorDocs: errorDocs.length,
-    protectedDocs: protectedDocs.length,
     size,
     query: payload.query || DEFAULT_QUERY,
     model: payload.model || "",
@@ -135,10 +115,5 @@ export function formatOutcomeMessage(result: OptimizerResult = { ok: false }): s
 export function applyOptimizedContext(output: Record<string, any> | undefined, result: OptimizerResult): void {
   if (!output || !result?.optimizedContext) return
 
-  const summary = formatSizeSummary(result.initialSize, result.finalSize)
-  const statusLine = summary
-    ? `[context-optimizer] optimized context emitted. ${summary}`
-    : `[context-optimizer] optimization completed, but savings summary was unavailable because size metadata was missing or non-numeric.${formatMissingSizeDetail(result)}`
-
-  output.context = [statusLine, `## Optimized Context\n\n${result.optimizedContext}`]
+  output.context = [formatOutcomeMessage(result), `## Optimized Context\n\n${result.optimizedContext}`]
 }

@@ -2,8 +2,18 @@
 
 > [!WARNING]
 > This plugin is still experimental. (It works on my machine)
+> I'm investigating what options there are for context deduplication (removes repeated info), reranking (removes irrelevant context) and compression. 
 
-Context compression for **OpenCode** and **Claude Code**: reranking (removes irrelevant context), deduplication (removes repeated info), and compression ([LLMLingua-2](https://github.com/microsoft/LLMLingua)). Expect roughly 30–40% token reduction on long sessions.
+> [!NOTE]
+> On Windows CPU-only machines, install the CPU PyTorch wheel first so the optimizer doesn't pull a CUDA build:
+> `python -m pip install --index-url https://download.pytorch.org/whl/cpu torch` — then run the installer with `--skip-deps` replaced by a normal run.
+> It is highly adviced to run this on a machine that supports Cuda. It does work on CPU only machines but the performance will be noticably slow.
+
+This plugin is currently available for **OpenCode** and **Claude Code**. There are differences in available hooks. Both have session compression but OpenCode wil also evaluate each chat message. 
+
+This plugin uses [Microsoft LLMLingua-2](https://github.com/microsoft/LLMLingua) for context compression and [Huggingface Sentence transformers](https://github.com/huggingface/sentence-transformers) for reranking and deduplication.
+
+Expect roughly up to 30% token reduction on long sessions.
 
 ## Architecture
 
@@ -56,10 +66,6 @@ Useful flags:
 - `--skip-models` — skip the model warm-up download
 
 Check what would be detected: `npx @evermeer/context-optimizer detect`
-
-> [!NOTE]
-> On Windows CPU-only machines, install the CPU PyTorch wheel first so the optimizer doesn't pull a CUDA build:
-> `python -m pip install --index-url https://download.pytorch.org/whl/cpu torch` — then run the installer with `--skip-deps` replaced by a normal run.
 
 ## How it works per platform
 
@@ -123,7 +129,7 @@ Environment variables win over `config.json`, which wins over defaults:
 | — | `CONTEXT_OPTIMIZER_PYTHON` | `py -3` (Windows) / `python3` | Python interpreter used for the bridge |
 | — | `CONTEXT_OPTIMIZER_CLI` | `~/.context-optimizer/python/context_optimizer_cli.py` | Path to the Python bridge script |
 
-Optimizer defaults (`compression_rate` 0.5, `max_chunks` 6, `dedupe_threshold` 0.9, prune budgets, …) live in [python/context_optimizer.py](python/context_optimizer.py) — see `ContextOptimizer.__init__`. If responses lose important detail, raise `compression_rate` or `max_chunks`; if prompts are still too large, lower them.
+Optimizer defaults (`compression_rate` 0.5, `max_chunks` 6, `dedupe_threshold` 0.9, prune budget, …) live in [python/context_optimizer.py](python/context_optimizer.py) — see `ContextOptimizer.__init__`. If responses lose important detail, raise `compression_rate` or `max_chunks`; if prompts are still too large, lower them.
 
 ## Models
 
