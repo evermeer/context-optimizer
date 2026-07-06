@@ -1,415 +1,135 @@
-
-# Context Optimizer Plugin
+# Context Optimizer
 
 > [!WARNING]
 > This plugin is still experimental. (It works on my machine)
 
-## Overview
-This plugin adds token reduction to your OpenCode setup.
+Context compression for **OpenCode** and **Claude Code**: reranking (removes irrelevant context), deduplication (removes repeated info), and compression ([LLMLingua-2](https://github.com/microsoft/LLMLingua)). Expect roughly 30–40% token reduction on long sessions.
 
-#### 🔧 Designed for:
-- ✅ OpenCode CLI
-- ✅ oh-my-openagent pipelines
-- ✅ Graphify + MemPalace
+## Architecture
 
-#### ✨ Features:
-- 🔃 Reranking (removes irrelevant context)
-- 🧹 Deduplication (removes repeated info)
-- 🗜️Compression (LLMLingua)
-- 🔌Works with Oh-My-Openagent + Graphify + MemPalace
+```
+context-optimizer/
+├── packages/
+│   ├── core/          # business logic: payload building, config, stats,
+│   │                  # Python bridge, environment detection, installer
+│   ├── claude-code/   # Claude Code adapter (PreCompact + SessionStart hooks)
+│   └── opencode/      # OpenCode adapter (compaction hook + slash commands)
+├── python/            # ML core: rerank + dedupe + compress (SentenceTransformers, LLMLingua)
+├── package.json
+└── tsconfig.json
+```
 
-#### 🚀 What You’ll Notice Immediately:
-
-- 🔥 30–40% token reduction
-- ⚡ Faster responses
-- 🧠 Cleaner, higher-quality context
-- 🔁 Scales with long conversations
-- 🎶Less context noise from Graphify + MemPalace
-
-#### 📂 in this repo:
-- 📁 `context-optimizer/plugin/context-optimizer.js` → JS OpenCode plugin source file to install globally
-- 📁 `context-optimizer/support-files/context_optimizer.py` → core Python logic (rerank + dedupe + compress)
-- 📁 `context-optimizer/support-files/context_optimizer_cli.py` → Python stdin/stdout bridge for the JS wrapper
-- 📁 `context-optimizer/support-files/context_optimizer_hook.py` → optional Python helper hook
-- 📁 `context-optimizer/tests/` → tests for the Python bridge and JS wrapper
-
-#### 📦 External dependencies:
-- 🧠 [Huggingface SentenceTransformers](https://github.com/huggingface/sentence-transformers/) (reranking + deduplication)
-- 🗜️ [Microsoft LLMLingua](https://github.com/microsoft/LLMLingua) (compression)
-- 🔥 [PyTorch](https://pytorch.org/) (installed automatically as a dependency of the two packages above)
-
-> [!NOTE]
-> On first run the plugin downloads three models from [Hugging Face](https://huggingface.co/). See [What gets downloaded on first run](#what-gets-downloaded-on-first-run) below so you know what to expect.
-
----
+Everything is TypeScript compiled with [tsup](https://tsup.egoist.dev/) to `dist/` (ES2022, ESM), except the ML core itself: reranking, dedup embeddings, and LLMLingua compression run in Python (PyTorch) and are called over a stdin/stdout JSON bridge. The adapters fail open — if Python or its dependencies are missing, your context is left untouched.
 
 ## Requirements
 
-Before you start, make sure the following are in place. If you already run OpenCode with oh-my-openagent, you only need to check **Python** and **pip**.
-
 | Requirement | Minimum | How to check |
 | --- | --- | --- |
-| Python | 3.9+ (3.10 / 3.11 recommended) | `python --version` |
-| pip | any recent version | `pip --version` |
-| OpenCode CLI + oh-my-openagent | installed globally | `opencode --help` |
-| Disk space | ~3–5 GB free (for the models) | — |
+| Node.js | 18+ | `node --version` |
+| Python | 3.9+ | `python --version` |
+| Disk space | ~3–5 GB free (models) | — |
 
-> [!TIP]
-> On Windows, `pip` may need to be invoked through the same Python interpreter you used for installation. On macOS/Linux it may be `pip3`. Use whichever resolves on your machine.
-
-### Install Python
-
-If `python --version` fails, install Python first:
-
-- **Windows / macOS:** download from [python.org/downloads](https://www.python.org/downloads/) (on Windows, tick *“Add python.exe to PATH”* during setup).
-- **macOS (Homebrew):** `brew install python`
-- **Debian / Ubuntu:** `sudo apt update && sudo apt install -y python3`
-
-### Install pip (one-liner)
-
-`pip` ships with modern Python. If `pip --version` fails, bootstrap it with the bundled module:
+## Installation
 
 ```bash
-python -m ensurepip --upgrade && python -m pip install --upgrade pip
+# auto-detect: installs into every environment it finds
+npx @evermeer/context-optimizer install
+
+# or force a specific target
+npx @evermeer/context-optimizer install --opencode
+npx @evermeer/context-optimizer install --claude
 ```
 
-If `ensurepip` is unavailable, use the official bootstrap script instead:
+The installer:
 
-```bash
-curl -sS https://bootstrap.pypa.io/get-pip.py | python
-```
+1. checks Node.js (18+) and Python (3.9+),
+2. installs the Python packages `sentence-transformers` and `llmlingua` (PyTorch comes with them),
+3. copies the Python bridge to `~/.context-optimizer/python/`,
+4. downloads the models once (several GB, one-time — see [Models](#models)),
+5. installs the OpenCode plugin and/or registers the Claude Code hooks.
 
-On Debian/Ubuntu you can also install it from the system package manager: `sudo apt install -y python3-pip`.
+Detection: OpenCode is recognized by `~/.config/opencode/` or an `opencode` binary on PATH; Claude Code by `~/.claude/` or a `claude` binary on PATH. Without `--opencode`/`--claude` flags, every detected environment is installed.
 
-**Verify:** `pip --version` should now print a version and a path.
+Useful flags:
 
-### Don't have OpenCode + oh-my-openagent yet?
+- `--skip-deps` — skip the pip install (already installed)
+- `--skip-models` — skip the model warm-up download
 
-This plugin plugs into the oh-my-openagent pipeline. If you haven't set those up, follow the baseline setup first: [Part 2: A default setup](./part-2-default-setup.md) (see *Install OpenCode* and *Install and Configure Oh-My-OpenAgent*). Come back here once `opencode --help` works.
-
----
-
-## Installation (CLI executable)
-
-> [!IMPORTANT]
-> **Current compatibility status (OpenCode JSON/JSONC configuration):**
->
-> The supported activation path for current OpenCode is a **JavaScript OpenCode local plugin** that wraps the existing Python optimizer.
->
-> In practice this means:
->
-> - ✅ Install the Python packages.
-> - ✅ Keep the plugin as one self-contained folder.
-> - ✅ Keep the JS wrapper implementation in `context-optimizer/plugin/context-optimizer.js`.
-> - ✅ Install that folder into your global OpenCode plugin directory.
-> - ✅ Let that JS plugin call the Python bridge from the sibling `support-files/` directory.
-
-### 1. Install dependencies
-
-Install the two Python packages (PyTorch is pulled in automatically):
-
-```bash
-pip install sentence-transformers llmlingua
-```
-
-If you're on **Windows CPU-only** (or any machine without CUDA), install the CPU wheel for PyTorch first so the optimizer doesn't try to load a CUDA build:
-
-```powershell
-python -m pip install --upgrade --index-url https://download.pytorch.org/whl/cpu torch torchvision torchaudio
-python -m pip install sentence-transformers llmlingua
-```
-
-If you do have an NVIDIA GPU, use the official PyTorch installer selector to pick the matching CUDA wheel for your machine instead.
+Check what would be detected: `npx @evermeer/context-optimizer detect`
 
 > [!NOTE]
-> On CPU-only installs, the optimizer automatically selects a smaller, CPU-friendly LLMLingua-2 model (`microsoft/llmlingua-2-bert-base-multilingual-cased-meetingbank`) instead of the larger CUDA-oriented `xlm-roberta-large` model. It keeps the LLMLingua-2 compression algorithm either way.
+> On Windows CPU-only machines, install the CPU PyTorch wheel first so the optimizer doesn't pull a CUDA build:
+> `python -m pip install --index-url https://download.pytorch.org/whl/cpu torch` — then run the installer with `--skip-deps` replaced by a normal run.
 
-> [!NOTE]
-> This is a sizeable download (PyTorch alone is several hundred MB). On a slow connection this step can take a few minutes.
+## How it works per platform
 
-**Verify the install:**
+### OpenCode
 
-```bash
-python -c "import sentence_transformers, llmlingua; print('ok')"
-```
+The installer copies a self-contained plugin to `~/.config/opencode/plugins/context-optimizer.js`. OpenCode loads it automatically. During `experimental.session.compacting` the plugin collects the compaction documents, calls the Python bridge, and replaces the context with an `## Optimized Context` block plus a size summary (initial size, final size, % saved).
 
-If this prints `ok`, the dependencies are ready. If you see `ModuleNotFoundError`, the packages were installed into a different Python than the one on your PATH — re-run the install with `python -m pip install sentence-transformers llmlingua` so the package and interpreter match.
-
----
-
-### 2. Add the plugin files
-
-#### Tiny install checklist
-
-**All platforms:** do **not** copy `tests/` or any `__pycache__/` folder into the OpenCode plugins directory.
-
-Copy the JS plugin file into your OpenCode global plugins folder:
-
-- `context-optimizer/plugin/context-optimizer.js`
-
-Copy the Python support files into a sibling support directory under the OpenCode config root:
-
-- `context-optimizer/support-files/context_optimizer.py`
-- `context-optimizer/support-files/context_optimizer_cli.py`
-- `context-optimizer/support-files/context_optimizer_hook.py`
-
-The JS wrapper calls the Python bridge over stdin/stdout JSON and fails open if Python or its dependencies are unavailable.
-
-The plugin writes to `context-optimizer/context-optimizer.log` under the OpenCode config root (for example `~/.config/opencode/context-optimizer/context-optimizer.log` on macOS/Linux or `%USERPROFILE%\.config\opencode\context-optimizer\context-optimizer.log` on Windows).
-It also persists cumulative slash-command and compaction stats to `context-optimizer/stats.json` in the same folder.
-
-**Where is the global plugins folder?**
-
-| OS | Path |
-| --- | --- |
-| macOS / Linux | `~/.config/opencode/plugins/` |
-| Windows | `%USERPROFILE%\.config\opencode\plugins\` |
-
-Create the folders if they do not exist, then copy the files:
-
-```bash
-# macOS / Linux
-mkdir -p ~/.config/opencode/plugins
-cp context-optimizer/plugin/context-optimizer.js ~/.config/opencode/plugins/context-optimizer.js
-mkdir -p ~/.config/opencode/context-optimizer
-cp context-optimizer/support-files/context_optimizer.py ~/.config/opencode/context-optimizer/context_optimizer.py
-cp context-optimizer/support-files/context_optimizer_cli.py ~/.config/opencode/context-optimizer/context_optimizer_cli.py
-cp context-optimizer/support-files/context_optimizer_hook.py ~/.config/opencode/context-optimizer/context_optimizer_hook.py
-```
-
-```powershell
-# Windows (PowerShell)
-New-Item -ItemType Directory -Force "$env:USERPROFILE\.config\opencode\plugins" | Out-Null
-Copy-Item context-optimizer\plugin\context-optimizer.js "$env:USERPROFILE\.config\opencode\plugins\context-optimizer.js"
-New-Item -ItemType Directory -Force "$env:USERPROFILE\.config\opencode\context-optimizer" | Out-Null
-Copy-Item context-optimizer\support-files\context_optimizer.py "$env:USERPROFILE\.config\opencode\context-optimizer\context_optimizer.py"
-Copy-Item context-optimizer\support-files\context_optimizer_cli.py "$env:USERPROFILE\.config\opencode\context-optimizer\context_optimizer_cli.py"
-Copy-Item context-optimizer\support-files\context_optimizer_hook.py "$env:USERPROFILE\.config\opencode\context-optimizer\context_optimizer_hook.py"
-```
-
-### 2a. JSON / JSONC-based configuration notes
-
-If your OpenCode setup is configured through JSON or JSONC files, the files you will typically inspect are:
-
-- `~/.config/opencode/opencode.json` — main OpenCode config (plugin list, MCP servers, providers, agents, etc.)
-- `~/.config/opencode/oh-my-openagent.jsonc` or `~/.config/opencode/oh-my-openagent.json` — oh-my-openagent user config
-- legacy compatibility files may still exist as `oh-my-opencode.jsonc` / `oh-my-opencode.json`
-
-For the current JSON/JSONC-based setup, you do **not** need a custom JSON config key to activate the wrapper once the files are copied into the global OpenCode plugin directory. OpenCode automatically loads JS/TS files from `~/.config/opencode/plugins/`.
-
-Use the JSON/JSONC files to:
-
-- confirm that OpenCode and oh-my-openagent are installed,
-- confirm your provider/plugin environment is healthy, and
-- optionally register a global npm plugin later if you decide to publish the wrapper as a package.
-
----
-
-### 3. Supported activation path
-
-For the current setup, activation is handled by the global OpenCode plugin loader after you copy the source files out of this repository.
-
-1. Ensure these files exist in your install location:
-
-```text
-%USERPROFILE%\.config\opencode\plugins\context-optimizer.js
-%USERPROFILE%\.config\opencode\context-optimizer\context_optimizer.py
-%USERPROFILE%\.config\opencode\context-optimizer\context_optimizer_cli.py
-%USERPROFILE%\.config\opencode\context-optimizer\context_optimizer_hook.py
-```
-
-2. Start OpenCode normally.
-
-3. OpenCode will automatically load `~/.config/opencode/plugins/context-optimizer.js`.
-
-4. During `experimental.session.compacting`, the wrapper will:
-
-- collect compaction context,
-- call the Python bridge,
-- append an `## Optimized Context` block when optimization succeeds,
-- and fall back to a no-op when Python or Python dependencies are missing.
-
-5. Verify behavior by triggering a compaction flow and watching for the optimized context block or for a single warning message if the wrapper falls back.
-
-**Verify the plugin loads:** confirm that `~/.config/opencode/plugins/context-optimizer.js` is present and that the compaction hook can call the Python bridge successfully.
-
-> [!CAUTION]
-> Do not copy `tests/` or any `__pycache__/` folder into `~/.config/opencode/plugins/`. Keep the JS plugin separate from the Python support directory.
-
----
-
-## Usage
-
-In the supported wrapper path, the optimizer automatically:
-
-1. Collects the compaction context documents
-2. Keeps only relevant chunks
-3. Removes duplicates
-4. Compresses context
-5. Appends the optimized result back into the compaction context from the JS wrapper
-
-The Python core returns:
-
-```python
-context["optimized_context"]
-```
-
-The JS wrapper also adds a size summary line with the initial size, final size, and percentage saved.
-
-The JS wrapper then replaces that result into the OpenCode compaction context as:
-
-```markdown
-## Optimized Context
-
-...
-```
-
-### Slash commands
-
-The plugin exposes these slash commands:
+Slash commands:
 
 | Command | What it does |
 | --- | --- |
-| `/context-optimizer` | Show help and the available command surface |
+| `/context-optimizer` | Show help |
 | `/context-optimizer context` | Show the current session context breakdown |
-| `/context-optimizer stats` | Show cumulative pruning and compaction stats from `stats.json` |
+| `/context-optimizer stats` | Show cumulative pruning/compaction stats |
 | `/context-optimizer compress` | Run one compression pass immediately |
-| `/context-optimizer config` | Show the current effective settings |
-| `/context-optimizer config get <key>` | Show one safe setting |
-| `/context-optimizer config set <key> <value>` | Update one safe setting |
-| `/context-optimizer config reset` | Clear saved settings |
+| `/context-optimizer config [get\|set\|reset]` | Show or update safe settings (`timeout_ms`, `min_chars`, `model_limits`) |
 
----
+### Claude Code
+
+Claude Code hooks cannot rewrite the compaction context directly, so the adapter uses a two-phase hand-off, registered in `~/.claude/settings.json`:
+
+1. **PreCompact hook** — before compaction runs, the transcript context is optimized via the Python bridge and the result is stored per session under `~/.context-optimizer/claude-sessions/`.
+2. **SessionStart hook** (matcher `compact`) — right after compaction, the stored optimized context is injected back into the fresh session as additional context and the hand-off file is removed.
+
+Both hooks fail open: on any error Claude Code proceeds untouched.
 
 ## Configuration
 
-The plugin has two layers of configuration:
+All state lives in `~/.context-optimizer/` (override with the `CONTEXT_OPTIMIZER_HOME` env var): `config.json`, `stats.json`, `context-optimizer.log`, and the Python bridge.
 
-1. **Wrapper settings** in `context-optimizer/plugin/context-optimizer.js` control when compaction runs.
-2. **Optimizer settings** in `context-optimizer/support-files/context_optimizer.py` control how text is filtered, ranked, and compressed.
+Environment variables win over `config.json`, which wins over defaults:
 
-### Wrapper settings
+| Setting | Env var | Default | What it does |
+| --- | --- | --- | --- |
+| `timeout_ms` | `CONTEXT_OPTIMIZER_TIMEOUT_MS` | `120000` | How long to wait for the Python bridge before failing open |
+| `min_chars` | `CONTEXT_OPTIMIZER_MIN_CHARS` | `2000` | Minimum context size before optimization runs |
+| `model_limits` | `CONTEXT_OPTIMIZER_MODEL_LIMITS` | `{}` | Per-model overrides, e.g. `{"gpt-4.1": {"compression_rate": 0.65, "max_chunks": 8}}` |
+| — | `CONTEXT_OPTIMIZER_PYTHON` | `py -3` (Windows) / `python3` | Python interpreter used for the bridge |
+| — | `CONTEXT_OPTIMIZER_CLI` | `~/.context-optimizer/python/context_optimizer_cli.py` | Path to the Python bridge script |
 
-| Setting | Default | What it does |
-| --- | --- | --- |
-| `CONTEXT_OPTIMIZER_TIMEOUT_MS` | `120000` | How long the JS wrapper waits for the Python bridge before failing open. |
-| `CONTEXT_OPTIMIZER_MIN_CHARS` | `2000` | Minimum context size before compaction starts. |
+Optimizer defaults (`compression_rate` 0.5, `max_chunks` 6, `dedupe_threshold` 0.9, prune budgets, …) live in [python/context_optimizer.py](python/context_optimizer.py) — see `ContextOptimizer.__init__`. If responses lose important detail, raise `compression_rate` or `max_chunks`; if prompts are still too large, lower them.
 
-If compaction is skipped, the wrapper still logs the skipped context size so you can see why it did not run.
+## Models
 
-### Safe config commands
+On first run the underlying libraries download three models from Hugging Face and cache them under `~/.cache/huggingface/`:
 
-Only these keys are writable:
+| Model | Purpose |
+| --- | --- |
+| `BAAI/bge-reranker-large` | Reranks chunks by relevance |
+| `all-MiniLM-L6-v2` | Embeddings for deduplication |
+| `microsoft/llmlingua-2-xlm-roberta-large-meetingbank` (CUDA) or `microsoft/llmlingua-2-bert-base-multilingual-cased-meetingbank` (CPU) | Prompt compression |
 
-- `timeout_ms`
-- `min_chars`
-- `model_limits`
+The installer warms this cache once so the first real compaction loads from disk.
 
-Env vars still win at startup, so they act as overrides over any saved config file.
-The plugin stores saved values in `context-optimizer/config.json` under the OpenCode config root.
-Anything outside that whitelist stays read-only.
-
-### Optimizer settings
-
-These defaults live in `ContextOptimizer.__init__`:
-
-| Setting | Default | What it does |
-| --- | --- | --- |
-| `compression_rate` | `0.5` | Fraction of tokens to keep during compression. Raise it to preserve more context. |
-| `max_chunks` | `6` | Maximum number of top-ranked chunks kept after reranking. |
-| `dedupe_threshold` | `0.9` | Cosine similarity above which two chunks count as duplicates. |
-| `reranker_model` | `BAAI/bge-reranker-large` | Model used for reranking chunks. |
-| `embed_model` | `all-MiniLM-L6-v2` | Model used for deduplication embeddings. |
-| `graph_budget_chars` | `1200` | Pre-prune budget for graph context. |
-| `memory_budget_chars` | `1200` | Pre-prune budget for memory context. |
-| `docs_budget_chars` | `1600` | Pre-prune budget for document context. |
-| `total_prune_budget_chars` | `4000` | Total character budget shared across buckets before compression. |
-| `error_prefixes` | `"[error]", "[context-optimizer] error"` | Documents with these prefixes are purged before pruning. |
-| `protected_prefixes` | `"protected:"` | Documents with these prefixes are kept out of the error purge path. |
-
-### Model-specific limits
-
-You can override the optimizer per model with `model_limits`. The core checks the explicit `model` argument first, then falls back to `options["model"]`, then `default`.
-
-```python
-model_limits = {
-    "default": {"compression_rate": 0.5, "max_chunks": 6},
-    "gpt-4.1": {"compression_rate": 0.65, "max_chunks": 8},
-}
-```
-
-> [!TIP]
-> Start with the defaults. If responses lose important detail, raise `compression_rate` or `max_chunks`. If prompts are still too large, lower them.
-
-### Process timeout and first-run warm-up
-
-The first run downloads several GB of models and will almost certainly exceed any practical timeout. Warm the cache **once** before relying on the plugin so the first real compaction loads from disk. Override the wrapper timeout with `CONTEXT_OPTIMIZER_TIMEOUT_MS`, e.g.:
+## Development
 
 ```bash
-# longer timeout for slow machines (milliseconds)
-export CONTEXT_OPTIMIZER_TIMEOUT_MS=300000
+npm install
+npm run build     # tsup → dist/ (index.js, cli.js, opencode.js, claude-hook.js)
+npm test          # build + node --test
+py -3 -m unittest discover -s tests -p "test_*.py"   # Python core tests
 ```
-
-The very first run downloads several GB of models (see [What gets downloaded on first run](#what-gets-downloaded-on-first-run)) and will almost certainly exceed any practical timeout. Warm the cache **once** before relying on the plugin so the first real compaction loads from disk:
-
-```bash
-python -c "from context_optimizer import ContextOptimizer; ContextOptimizer()"
-```
-
-Run that from the directory containing `context_optimizer.py` (your installed `~/.config/opencode/context-optimizer/`). If the wrapper times out, it fails open and leaves the original context untouched.
-
----
-
-## What gets downloaded on first run
-
-The first time the plugin runs, the underlying libraries download three models from [Hugging Face](https://huggingface.co/) and cache them locally (under `~/.cache/huggingface/` on macOS/Linux, `%USERPROFILE%\.cache\huggingface\` on Windows):
-
-| Model | Purpose | Configured via |
-| --- | --- | --- |
-| `BAAI/bge-reranker-large` | Reranks chunks by relevance | `reranker_model` |
-| `all-MiniLM-L6-v2` | Embeddings used for deduplication | `embed_model` |
-| `microsoft/llmlingua-2-xlm-roberta-large-meetingbank` (CUDA) or `microsoft/llmlingua-2-bert-base-multilingual-cased-meetingbank` (CPU) | Prompt compression | LLMLingua (auto-selected by device) |
-
-This download happens **once** and only needs network access the first time. Expect the first session to be slower while the models are fetched. Subsequent sessions load from cache.
-
----
-
-## Expected Results
-
-- 30–40% token reduction
-- Faster responses
-- Cleaner prompts
-
----
-
-## Memory Compression
-
-Compress before storing memory:
-
-```python
-compressed = optimizer.compress([text])
-mempalace.store(compressed)
-```
-
----
 
 ## Troubleshooting
 
 | Symptom | Likely cause | Fix |
 | --- | --- | --- |
-| `ModuleNotFoundError: sentence_transformers` or `llmlingua` | Packages installed into a different Python than OpenCode uses | Re-install with `python -m pip install sentence-transformers llmlingua`, or activate the same virtual environment before launching OpenCode |
-| `ImportError: cannot import name 'ContextOptimizer'` | The Python bridge cannot import the core optimizer | Make sure `context-optimizer/support-files/context_optimizer.py` and `context-optimizer/support-files/context_optimizer_cli.py` stay together in the repo, and that the installed copies stay together inside `~/.config/opencode/context-optimizer/` |
-| `pip: command not found` | pip not installed / not on PATH | See [Install pip (one-liner)](#install-pip-one-liner) |
-| First message hangs for a long time | Models are downloading from Hugging Face | Wait for the one-time download to finish; see [What gets downloaded on first run](#what-gets-downloaded-on-first-run). Warm the cache once (see [Process timeout and first-run warm-up](#process-timeout-and-first-run-warm-up)) and/or raise `CONTEXT_OPTIMIZER_TIMEOUT_MS` |
-| Hook never runs / context unchanged | The JS wrapper was not loaded or compaction did not fire | Confirm `~/.config/opencode/plugins/context-optimizer.js` exists and trigger a session compaction |
-| You expect console output but see none | Logging was moved to `context-optimizer/context-optimizer.log` under the OpenCode config root | Check the `.log` file instead of the terminal |
-| `/context-optimizer stats` shows zeros | Stats are read from `context-optimizer/stats.json` under the OpenCode config root | Make sure the plugin has run at least one successful optimization and that the stats file is writable |
-| Compaction was skipped | The wrapper still logs skipped compactions with the context size and document count | Check `context-optimizer/context-optimizer.log` for the skip reason and size details |
-| You see a warning and no optimized context block | The wrapper fell back to no-op mode because Python, dependencies, or the bridge failed | Read the warning text, fix the Python issue, and retry |
-| Out-of-memory or very slow CPU | Reranker model is large | Switch `reranker_model` to `BAAI/bge-reranker-base` in `context_optimizer.py` |
-
----
-
-## Done ✅
-
-Your agent now uses efficient token-aware context.
+| `ModuleNotFoundError: sentence_transformers` / `llmlingua` | Packages installed into a different Python | Re-run `python -m pip install sentence-transformers llmlingua` with the interpreter from `CONTEXT_OPTIMIZER_PYTHON` |
+| First run hangs | Models downloading from Hugging Face | One-time; re-run the installer or raise `CONTEXT_OPTIMIZER_TIMEOUT_MS` |
+| Nothing happens on compaction | Context below `min_chars`, or adapter not loaded | Check `~/.context-optimizer/context-optimizer.log` for the skip reason |
+| Warning instead of optimized context | Bridge failed (fail-open) | Read the warning in the log, fix the Python issue, retry |
+| Out-of-memory / very slow CPU | Reranker model is large | Switch `reranker_model` to `BAAI/bge-reranker-base` in `python/context_optimizer.py` |
+| `/context-optimizer stats` shows zeros | No successful optimization yet | Stats accumulate in `~/.context-optimizer/stats.json` after the first successful run |

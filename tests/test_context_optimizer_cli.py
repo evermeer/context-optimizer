@@ -8,8 +8,8 @@ import textwrap
 from pathlib import Path
 
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
-CLI = REPO_ROOT / "context-optimizer" / "support-files" / "context_optimizer_cli.py"
+REPO_ROOT = Path(__file__).resolve().parents[1]
+CLI = REPO_ROOT / "python" / "context_optimizer_cli.py"
 
 
 def run_cli(payload, cli_path=CLI):

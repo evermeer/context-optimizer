@@ -8,9 +8,9 @@ from pathlib import Path
 from typing import Any, cast
 
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
-CORE = REPO_ROOT / "context-optimizer" / "support-files" / "context_optimizer.py"
-HOOK = REPO_ROOT / "context-optimizer" / "support-files" / "context_optimizer_hook.py"
+REPO_ROOT = Path(__file__).resolve().parents[1]
+CORE = REPO_ROOT / "python" / "context_optimizer.py"
+HOOK = REPO_ROOT / "python" / "context_optimizer_hook.py"
 
 
 class _Score:

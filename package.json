@@ -1,0 +1,37 @@
+{
+  "name": "@evermeer/context-optimizer",
+  "version": "0.1.0",
+  "description": "Context compression (rerank + dedupe + LLMLingua) for OpenCode and Claude Code",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "context-optimizer": "dist/cli.js"
+  },
+  "main": "dist/index.js",
+  "exports": {
+    ".": "./dist/index.js",
+    "./opencode": "./dist/opencode.js",
+    "./claude-code": "./dist/claude-hook.js"
+  },
+  "files": [
+    "dist",
+    "python"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "test": "npm run build && node --test \"tests/*.test.mjs\"",
+    "prepublishOnly": "npm run build"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/evermeer/context-optimizer.git"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.4.0"
+  }
+}
