@@ -13,32 +13,17 @@
 > This plugin is still experimental. (It works on my machine)
 > I'm investigating what options there are for context deduplication (removes repeated info), reranking (removes irrelevant context) and compression. 
 
-> [!NOTE]
-> On Windows CPU-only machines, install the CPU PyTorch wheel first so the optimizer doesn't pull a CUDA build:
-> `python -m pip install --index-url https://download.pytorch.org/whl/cpu torch` — then run the installer with `--skip-deps` replaced by a normal run.
-> It is highly adviced to run this on a machine that supports Cuda. It does work on CPU only machines but the performance will be noticably slow.
+## Highlights
 
-This plugin is currently available for **OpenCode** and **Claude Code**. There are differences in available hooks. Both have session compression but OpenCode wil also evaluate each chat message. 
+- **Local & private** — all ML runs on your machine; your context never leaves it.
+- **Fails open** — if Python or a model is missing, context is passed through untouched. It can't break a session.
+- **Two platforms, one config** — works with both OpenCode and Claude Code, sharing a single config and stats store.
+- **Tunable or zero-config** — every model and threshold is configurable per-model or globally, but the defaults just work.
+- **GPU or CPU** — uses CUDA when available, and falls back to lighter CPU models automatically.
 
-This plugin uses [Microsoft LLMLingua-2](https://github.com/microsoft/LLMLingua) for context compression and [Huggingface Sentence transformers](https://github.com/huggingface/sentence-transformers) for reranking and deduplication.
+Both platforms compress the session on compaction; OpenCode additionally optimizes each chat turn live (Claude Code has no hook for that — see [How it works per platform](#how-it-works-per-platform)).
 
 On the context that actually gets compacted, expect roughly **40–60% fewer tokens** (LLMLingua-2 at the default `0.5` rate, after rerank + dedup pruning). Whole-session savings depend on how much of the session is compactable — and the exact `% saved` is measured and reported live on every compaction, so you never have to trust a headline number.
-
-## Architecture
-
-```
-context-optimizer/
-├── packages/
-│   ├── core/          # business logic: payload building, config, stats,
-│   │                  # Python bridge, environment detection, installer
-│   ├── claude-code/   # Claude Code adapter (PreCompact + SessionStart hooks)
-│   └── opencode/      # OpenCode adapter (compaction hook + slash commands)
-├── python/            # ML core: rerank + dedupe + compress (SentenceTransformers, LLMLingua)
-├── package.json
-└── tsconfig.json
-```
-
-Everything is TypeScript compiled with [tsup](https://tsup.egoist.dev/) to `dist/` (ES2022, ESM), except the ML core itself: reranking, dedup embeddings, and LLMLingua compression run in Python (PyTorch) and are called over a stdin/stdout JSON bridge. The adapters fail open — if Python or its dependencies are missing, your context is left untouched.
 
 ## Requirements
 
@@ -47,6 +32,11 @@ Everything is TypeScript compiled with [tsup](https://tsup.egoist.dev/) to `dist
 | Node.js | 18+ | `node --version` |
 | Python | 3.9+ | `python --version` |
 | Disk space | ~3–5 GB free (models) | — |
+
+> [!NOTE]
+> A CUDA GPU is strongly recommended. The optimizer runs CPU-only too, but compression is noticeably slower.
+> On **Windows, CPU-only** machines, install the CPU PyTorch wheel *before* running the installer so it doesn't pull a large CUDA build:
+> `python -m pip install --index-url https://download.pytorch.org/whl/cpu torch`
 
 ## Installation
 
@@ -64,7 +54,7 @@ The installer:
 1. checks Node.js (18+) and Python (3.9+),
 2. installs the Python packages `sentence-transformers` and `llmlingua` (PyTorch comes with them),
 3. copies the Python bridge to `~/.context-optimizer/python/`,
-4. downloads the models once (several GB, one-time — see [Models](#models)),
+4. downloads the models once (~3–5 GB, one-time — see [Models](#models)),
 5. installs the OpenCode plugin and/or registers the Claude Code hooks.
 
 Detection: OpenCode is recognized by `~/.config/opencode/` or an `opencode` binary on PATH; Claude Code by `~/.claude/` or a `claude` binary on PATH. Without `--opencode`/`--claude` flags, every detected environment is installed.
@@ -180,6 +170,22 @@ Leave `compressor_model` unset to let the bridge auto-select by device. Only LLM
 | --- | --- |
 | `microsoft/llmlingua-2-xlm-roberta-large-meetingbank` | Auto-selected on **CUDA**. Larger, multilingual, higher-quality compression. |
 | `microsoft/llmlingua-2-bert-base-multilingual-cased-meetingbank` | Auto-selected on **CPU**. Smaller and faster; also a good explicit choice to force the lighter model on a GPU box. |
+
+## Architecture
+
+```
+context-optimizer/
+├── packages/
+│   ├── core/          # business logic: payload building, config, stats,
+│   │                  # Python bridge, environment detection, installer
+│   ├── claude-code/   # Claude Code adapter (PreCompact + SessionStart hooks)
+│   └── opencode/      # OpenCode adapter (compaction hook + slash commands)
+├── python/            # ML core: rerank + dedupe + compress (SentenceTransformers, LLMLingua)
+├── package.json
+└── tsconfig.json
+```
+
+Everything is TypeScript compiled with [tsup](https://tsup.egoist.dev/) to `dist/` (ES2022, ESM), except the ML core itself: reranking, dedup embeddings, and LLMLingua compression run in Python (PyTorch) and are called over a stdin/stdout JSON bridge. The adapters fail open — if Python or its dependencies are missing, your context is left untouched.
 
 ## Development
 
