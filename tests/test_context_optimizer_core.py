@@ -101,6 +101,16 @@ class ContextOptimizerCoreTests(unittest.TestCase):
         self.assertIn("reranker=", output)
         self.assertIn("compressor=", output)
 
+    def test_compressor_model_defaults_by_device_and_honors_override(self):
+        module = load_core_module()
+
+        # No CUDA in the test env, so the CPU LLMLingua-2 checkpoint is auto-selected.
+        default = module.ContextOptimizer()
+        self.assertIn("llmlingua-2", default.compressor.model_name)
+
+        override = module.ContextOptimizer(compressor_model="my/custom-compressor")
+        self.assertEqual(override.compressor.model_name, "my/custom-compressor")
+
     def test_optimize_reranks_and_compresses_context(self):
         module = load_core_module()
         optimizer = module.ContextOptimizer(compression_rate=0.25, max_chunks=2)

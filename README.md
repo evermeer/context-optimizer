@@ -125,23 +125,52 @@ Environment variables win over `config.json`, which wins over defaults:
 | --- | --- | --- | --- |
 | `timeout_ms` | `CONTEXT_OPTIMIZER_TIMEOUT_MS` | `120000` | How long to wait for the Python bridge before failing open |
 | `min_chars` | `CONTEXT_OPTIMIZER_MIN_CHARS` | `2000` | Minimum context size before optimization runs |
+| `compression_rate` | `CONTEXT_OPTIMIZER_COMPRESSION_RATE` | `0.5` | Fraction of tokens LLMLingua keeps (0–1); higher keeps more detail |
+| `max_chunks` | `CONTEXT_OPTIMIZER_MAX_CHUNKS` | `6` | Max ranked chunks kept before compression (positive integer) |
+| `dedupe_threshold` | `CONTEXT_OPTIMIZER_DEDUPE_THRESHOLD` | `0.9` | Cosine similarity (0–1) above which a chunk is treated as a duplicate |
+| `total_prune_budget_chars` | `CONTEXT_OPTIMIZER_PRUNE_BUDGET_CHARS` | `4000` | Char budget of ranked+deduped context kept before compression (positive integer) |
+| `auto_compression_chars` | `CONTEXT_OPTIMIZER_AUTO_COMPRESSION_CHARS` | `4000` | Context size (chars) at which per-model `model_limits` overrides kick in |
+| `reranker_model` | `CONTEXT_OPTIMIZER_RERANKER_MODEL` | `BAAI/bge-reranker-large` | HuggingFace cross-encoder used to rank chunks by relevance |
+| `embed_model` | `CONTEXT_OPTIMIZER_EMBED_MODEL` | `all-MiniLM-L6-v2` | HuggingFace embedding model used for deduplication |
+| `compressor_model` | `CONTEXT_OPTIMIZER_COMPRESSOR_MODEL` | _(auto by device)_ | LLMLingua-2 model used for compression; unset lets the bridge pick by device (see below) |
 | `model_limits` | `CONTEXT_OPTIMIZER_MODEL_LIMITS` | `{}` | Per-model overrides, e.g. `{"gpt-4.1": {"compression_rate": 0.65, "max_chunks": 8}}` |
 | — | `CONTEXT_OPTIMIZER_PYTHON` | `py -3` (Windows) / `python3` | Python interpreter used for the bridge |
 | — | `CONTEXT_OPTIMIZER_CLI` | `~/.context-optimizer/python/context_optimizer_cli.py` | Path to the Python bridge script |
 
-Optimizer defaults (`compression_rate` 0.5, `max_chunks` 6, `dedupe_threshold` 0.9, prune budget, …) live in [python/context_optimizer.py](python/context_optimizer.py) — see `ContextOptimizer.__init__`. If responses lose important detail, raise `compression_rate` or `max_chunks`; if prompts are still too large, lower them.
+`compression_rate`, `max_chunks`, `dedupe_threshold`, `total_prune_budget_chars`, `reranker_model`, `embed_model`, and `compressor_model` are global defaults; a matching key in `model_limits` overrides them per-model, and an explicit per-request option overrides both. If responses lose important detail, raise `compression_rate` or `max_chunks`; if prompts are still too large, lower them. (`auto_compression_chars` is a JS-side gate for `model_limits`, so it is not a per-model or per-request key.)
 
 ## Models
 
-On first run the underlying libraries download three models from Hugging Face and cache them under `~/.cache/huggingface/`:
+The pipeline uses three models, each swappable via the matching config key. On first run the libraries download them from Hugging Face and cache them under `~/.cache/huggingface/`; the installer warms this cache once so the first real compaction loads from disk. Set an alternative with `context-optimizer config set <key> <model>` (or the env var).
 
-| Model | Purpose |
+Any Hugging Face model that fits the role works — the lists below are tested, drop-in options. Larger models improve quality but cost memory and latency; smaller ones keep the optimizer responsive on CPU.
+
+### `reranker_model` — ranks chunks by relevance (CrossEncoder)
+
+| Model | Notes |
 | --- | --- |
-| `BAAI/bge-reranker-large` | Reranks chunks by relevance |
-| `all-MiniLM-L6-v2` | Embeddings for deduplication |
-| `microsoft/llmlingua-2-xlm-roberta-large-meetingbank` (CUDA) or `microsoft/llmlingua-2-bert-base-multilingual-cased-meetingbank` (CPU) | Prompt compression |
+| `BAAI/bge-reranker-large` | **Default.** Best ranking quality; largest and slowest, heavy on CPU. |
+| `BAAI/bge-reranker-base` | Noticeably smaller/faster with a small quality drop — the go-to if the large model is slow or OOMs. |
+| `BAAI/bge-reranker-v2-m3` | Strong multilingual reranking; larger, best on a GPU. |
+| `cross-encoder/ms-marco-MiniLM-L-6-v2` | Tiny and very fast, English-only; lowest quality — for constrained CPUs. |
 
-The installer warms this cache once so the first real compaction loads from disk.
+### `embed_model` — embeddings for deduplication (SentenceTransformer)
+
+| Model | Notes |
+| --- | --- |
+| `all-MiniLM-L6-v2` | **Default.** Fast, small, solid general-purpose English embeddings. |
+| `all-mpnet-base-v2` | Higher-quality English embeddings; ~3–4× larger and slower. |
+| `BAAI/bge-small-en-v1.5` | Small, strong English embedder; good quality-for-size alternative to the default. |
+| `paraphrase-multilingual-MiniLM-L12-v2` | Multilingual dedup for non-English or mixed-language context. |
+
+### `compressor_model` — prompt compression (must be an LLMLingua-2 model)
+
+Leave `compressor_model` unset to let the bridge auto-select by device. Only LLMLingua-2 checkpoints work here (the bridge runs with `use_llmlingua2=True`).
+
+| Model | Notes |
+| --- | --- |
+| `microsoft/llmlingua-2-xlm-roberta-large-meetingbank` | Auto-selected on **CUDA**. Larger, multilingual, higher-quality compression. |
+| `microsoft/llmlingua-2-bert-base-multilingual-cased-meetingbank` | Auto-selected on **CPU**. Smaller and faster; also a good explicit choice to force the lighter model on a GPU box. |
 
 ## Development
 
@@ -160,5 +189,5 @@ py -3 -m unittest discover -s tests -p "test_*.py"   # Python core tests
 | First run hangs | Models downloading from Hugging Face | One-time; re-run the installer or raise `CONTEXT_OPTIMIZER_TIMEOUT_MS` |
 | Nothing happens on compaction | Context below `min_chars`, or adapter not loaded | Check `~/.context-optimizer/context-optimizer.log` for the skip reason |
 | Warning instead of optimized context | Bridge failed (fail-open) | Read the warning in the log, fix the Python issue, retry |
-| Out-of-memory / very slow CPU | Reranker model is large | Switch `reranker_model` to `BAAI/bge-reranker-base` in `python/context_optimizer.py` |
+| Out-of-memory / very slow CPU | Reranker model is large | Run `context-optimizer config set reranker_model BAAI/bge-reranker-base` (or set `CONTEXT_OPTIMIZER_RERANKER_MODEL`) |
 | `/context-optimizer stats` shows zeros | No successful optimization yet | Stats accumulate in `~/.context-optimizer/stats.json` after the first successful run |

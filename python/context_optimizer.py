@@ -20,6 +20,7 @@ class ContextOptimizer:
         self,
         reranker_model="BAAI/bge-reranker-large",
         embed_model="all-MiniLM-L6-v2",
+        compressor_model=None,
         compression_rate=0.5,
         max_chunks=6,
         dedupe_threshold=0.9,
@@ -29,8 +30,9 @@ class ContextOptimizer:
         device = "cuda" if torch is not None and torch.cuda.is_available() else "cpu"
         # Keep the LLMLingua-2 algorithm on both devices; on CPU use the smaller
         # multilingual BERT checkpoint instead of the large xlm-roberta model so
-        # the optimizer stays responsive without a CUDA GPU.
-        compressor_model = (
+        # the optimizer stays responsive without a CUDA GPU. An explicit
+        # compressor_model overrides this device-based default.
+        compressor_model = compressor_model or (
             "microsoft/llmlingua-2-xlm-roberta-large-meetingbank"
             if device == "cuda"
             else "microsoft/llmlingua-2-bert-base-multilingual-cased-meetingbank"

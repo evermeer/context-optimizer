@@ -5,8 +5,7 @@ import { runOptimizer } from "./bridge.js"
 import {
   SAFE_CONFIG_KEYS,
   normalizeConfigKey,
-  parseJsonValue,
-  parseNumeric,
+  parseConfigValue,
   readStoredConfig,
   readStoredStats,
   removeStoredConfig,
@@ -68,22 +67,13 @@ function runConfig(args: string[]): number {
     }
 
     const stored = readStoredConfig()
-    let value: unknown = rest.join(" ")
-    if (normalizedKey === "model_limits") {
-      value = parseJsonValue(value as string, null as any)
-      if (!value || typeof value !== "object") {
-        process.stderr.write("model_limits must be valid JSON.\n")
-        return 1
-      }
-    } else {
-      value = parseNumeric(value, Number.NaN)
-      if (!Number.isFinite(value as number) || (value as number) <= 0) {
-        process.stderr.write(`${normalizedKey} must be a positive number.\n`)
-        return 1
-      }
+    const parsed = parseConfigValue(normalizedKey, rest.join(" "))
+    if (!parsed.ok) {
+      process.stderr.write(`${parsed.error}\n`)
+      return 1
     }
 
-    writeStoredConfig({ ...stored, [normalizedKey]: value })
+    writeStoredConfig({ ...stored, [normalizedKey]: parsed.value })
     process.stdout.write(`${JSON.stringify(resolveEffectiveConfig(), null, 2)}\n`)
     return 0
   }

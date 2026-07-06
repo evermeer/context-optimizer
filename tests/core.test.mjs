@@ -65,6 +65,63 @@ test("config round-trips through the stored config file", () => {
   assert.equal(core.resolveEffectiveConfig().min_chars, core.DEFAULT_MIN_COMPACTION_CHARS)
 })
 
+test("optimizer tuning knobs default, round-trip, forward to Python, and coerce ints", () => {
+  const defaults = core.resolveEffectiveConfig()
+  assert.equal(defaults.compression_rate, core.DEFAULT_COMPRESSION_RATE)
+  assert.equal(defaults.max_chunks, core.DEFAULT_MAX_CHUNKS)
+  assert.equal(defaults.dedupe_threshold, core.DEFAULT_DEDUPE_THRESHOLD)
+  assert.equal(defaults.total_prune_budget_chars, core.DEFAULT_PRUNE_BUDGET_CHARS)
+  assert.equal(defaults.reranker_model, core.DEFAULT_RERANKER_MODEL)
+  assert.equal(defaults.embed_model, core.DEFAULT_EMBED_MODEL)
+
+  // Forwarded options carry the Python kwarg names, and NOT the TS-only threshold.
+  // compressor_model is omitted while unset so Python keeps its device-based default.
+  const forwarded = core.optimizerOptionsFromConfig(defaults)
+  assert.deepEqual(forwarded, {
+    compression_rate: core.DEFAULT_COMPRESSION_RATE,
+    max_chunks: core.DEFAULT_MAX_CHUNKS,
+    dedupe_threshold: core.DEFAULT_DEDUPE_THRESHOLD,
+    total_prune_budget_chars: core.DEFAULT_PRUNE_BUDGET_CHARS,
+    reranker_model: core.DEFAULT_RERANKER_MODEL,
+    embed_model: core.DEFAULT_EMBED_MODEL,
+  })
+  assert.ok(!("auto_compression_chars" in forwarded))
+  assert.ok(!("compressor_model" in forwarded))
+
+  core.writeStoredConfig({
+    compression_rate: 0.7,
+    max_chunks: 8.6,
+    total_prune_budget_chars: 5000.4,
+    reranker_model: "BAAI/bge-reranker-base",
+    compressor_model: "microsoft/llmlingua-2-bert-base-multilingual-cased-meetingbank",
+  })
+  const stored = core.resolveEffectiveConfig()
+  assert.equal(stored.compression_rate, 0.7)
+  assert.equal(stored.max_chunks, 9) // rounded so Python's slice never sees a float
+  assert.equal(stored.total_prune_budget_chars, 5000) // rounded to a whole char count
+  assert.equal(stored.reranker_model, "BAAI/bge-reranker-base")
+  // An explicit compressor_model IS forwarded to Python.
+  assert.equal(
+    core.optimizerOptionsFromConfig(stored).compressor_model,
+    "microsoft/llmlingua-2-bert-base-multilingual-cased-meetingbank",
+  )
+  core.removeStoredConfig()
+})
+
+test("parseConfigValue validates ints, rate bounds, strings, and JSON", () => {
+  assert.equal(core.parseConfigValue("compression_rate", "0.5").value, 0.5)
+  assert.equal(core.parseConfigValue("compression_rate", "1.5").ok, false)
+  assert.equal(core.parseConfigValue("max_chunks", "6").value, 6)
+  assert.equal(core.parseConfigValue("max_chunks", "6.5").ok, false)
+  assert.equal(core.parseConfigValue("dedupe_threshold", "0").ok, false)
+  assert.equal(core.parseConfigValue("total_prune_budget_chars", "4000").value, 4000)
+  assert.equal(core.parseConfigValue("reranker_model", "BAAI/bge-reranker-base").value, "BAAI/bge-reranker-base")
+  assert.equal(core.parseConfigValue("compressor_model", "microsoft/llmlingua-2-...").ok, true)
+  assert.equal(core.parseConfigValue("embed_model", "   ").ok, false)
+  assert.deepEqual(core.parseConfigValue("model_limits", '{"gpt":{}}').value, { gpt: {} })
+  assert.equal(core.parseConfigValue("model_limits", "not json").ok, false)
+})
+
 test("recordOptimizationStats accumulates optimized chars per session", () => {
   core.recordOptimizationStats("s1", { initialSize: 100, finalSize: 40 })
   core.recordOptimizationStats("s2", { initialSize: 10, finalSize: 5 })

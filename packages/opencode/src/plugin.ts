@@ -6,8 +6,7 @@ import { runOptimizer } from "../../core/src/bridge.js"
 import {
   SAFE_CONFIG_KEYS,
   normalizeConfigKey,
-  parseJsonValue,
-  parseNumeric,
+  parseConfigValue,
   readStoredConfig,
   readStoredStats,
   recordOptimizationStats,
@@ -235,22 +234,13 @@ export const ContextOptimizerPlugin = async (dependencies: any = {}) => {
           }
 
           const stored = readStoredConfig()
-          let value: unknown = rest.join(" ")
-          if (normalizedKey === "model_limits") {
-            value = parseJsonValue(value as string, null as any)
-            if (!value || typeof value !== "object") {
-              reply(buildCommandOutput("config set failed", "model_limits must be valid JSON."))
-              return
-            }
-          } else {
-            value = parseNumeric(value, Number.NaN)
-            if (!Number.isFinite(value as number) || (value as number) <= 0) {
-              reply(buildCommandOutput("config set failed", `${normalizedKey} must be a positive number.`))
-              return
-            }
+          const parsed = parseConfigValue(normalizedKey, rest.join(" "))
+          if (!parsed.ok) {
+            reply(buildCommandOutput("config set failed", parsed.error as string))
+            return
           }
 
-          writeStoredConfig({ ...stored, [normalizedKey]: value })
+          writeStoredConfig({ ...stored, [normalizedKey]: parsed.value })
           reply(buildCommandOutput("config updated", formatJsonBlock(resolveEffectiveConfig())))
           return
         }

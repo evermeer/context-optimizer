@@ -1,6 +1,5 @@
 import { resolveEffectiveConfig } from "./config.js"
 
-export const AUTO_COMPRESSION_THRESHOLD_CHARS = 4000
 export const DEFAULT_QUERY = "Optimize the most relevant context for compaction."
 
 export interface OptimizerPayload {
@@ -36,10 +35,11 @@ export function buildPayload(
     ? output.context.filter((value: unknown): value is string => typeof value === "string" && !!value.trim())
     : []
   const size = docs.reduce((total, value) => total + value.length, 0)
-  const modelLimits = resolveEffectiveConfig().model_limits
+  const config = resolveEffectiveConfig()
+  const modelLimits = config.model_limits
   const modelLimit = model && modelLimits && typeof modelLimits === "object" ? modelLimits[model] : null
 
-  if (size >= AUTO_COMPRESSION_THRESHOLD_CHARS && modelLimit && typeof modelLimit === "object") {
+  if (size >= config.auto_compression_chars && modelLimit && typeof modelLimit === "object") {
     for (const [key, value] of Object.entries(modelLimit)) {
       options[key] = value
     }

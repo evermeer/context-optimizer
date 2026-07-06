@@ -1,7 +1,7 @@
 import childProcess from "node:child_process"
 import process from "node:process"
 
-import { resolveEffectiveConfig } from "./config.js"
+import { optimizerOptionsFromConfig, resolveEffectiveConfig } from "./config.js"
 import { writeDiagnostic, writeLog } from "./log.js"
 import { pythonCliPath } from "./paths.js"
 import type { OptimizerPayload, OptimizerResult } from "./payload.js"
@@ -64,6 +64,15 @@ export function runOptimizer({
 }: RunOptimizerOptions): Promise<OptimizerResult> {
   const python = resolvePythonCommand()
 
+  // Global config (compression_rate, max_chunks, dedupe_threshold) is the base
+  // layer; per-request options and per-model limits already on the payload win.
+  const payloadOptions =
+    payload.options && typeof payload.options === "object" ? (payload.options as Record<string, unknown>) : {}
+  const mergedPayload = {
+    ...payload,
+    options: { ...optimizerOptionsFromConfig(resolveEffectiveConfig()), ...payloadOptions },
+  }
+
   return new Promise<OptimizerResult>((resolve) => {
     const child = childProcess.spawn(python[0], [...python.slice(1), cliPath], {
       stdio: ["pipe", "pipe", "pipe"],
@@ -115,7 +124,7 @@ export function runOptimizer({
     })
 
     try {
-      child.stdin.write(JSON.stringify(payload))
+      child.stdin.write(JSON.stringify(mergedPayload))
       child.stdin.end()
     } catch (error) {
       writeDiagnostic(`[context-optimizer] stdin write failed: ${error}`)
