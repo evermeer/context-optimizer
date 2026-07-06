@@ -66,6 +66,10 @@ Check what would be detected: `npx @evermeer/context-optimizer detect`
 ### OpenCode
 
 The installer copies a self-contained plugin to `~/.config/opencode/plugins/context-optimizer.js`. OpenCode loads it automatically. During `experimental.session.compacting` the plugin collects the compaction documents, calls the Python bridge, and replaces the context with an `## Optimized Context` block plus a size summary (initial size, final size, % saved).
+In addition, `experimental.chat.messages.transform` runs live optimization on every chat turn (no Python round-trip, pure TS):
+
+- **deduplication** — tool calls with an identical tool name + parameters keep only the newest output; older duplicates are replaced with a short marker.
+- **purge errors** — string inputs of errored tool calls older than 4 user turns are replaced with a marker (the error output is kept). Mutating/planning tools (`write`, `edit`, `task`, `todowrite`, …) are protected and never optimized away.
 
 Slash commands:
 
@@ -85,6 +89,13 @@ Claude Code hooks cannot rewrite the compaction context directly, so the adapter
 2. **SessionStart hook** (matcher `compact`) — right after compaction, the stored optimized context is injected back into the fresh session as additional context and the hand-off file is removed.
 
 Both hooks fail open: on any error Claude Code proceeds untouched.
+
+Claude Code has no hook that can rewrite the live conversation, so the per-turn optimization strategies from the OpenCode plugin run here at the PreCompact rewrite point instead, while parsing the transcript:
+
+- **deduplication** — identical tool calls (same tool + parameters) keep only the newest result.
+- **purge errors** — errored tool results older than 4 user turns are dropped.
+
+Surviving tool outputs (capped per result) are fed to the optimizer alongside the prose, instead of being discarded wholesale.
 
 Slash commands (installed as markdown commands in `~/.claude/commands/context-optimizer*`):
 

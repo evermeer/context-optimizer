@@ -67,12 +67,12 @@ test("config round-trips through the stored config file", () => {
   assert.equal(core.resolveEffectiveConfig().min_chars, core.DEFAULT_MIN_COMPACTION_CHARS)
 })
 
-test("recordOptimizationStats accumulates pruned chars per session", () => {
+test("recordOptimizationStats accumulates optimized chars per session", () => {
   core.recordOptimizationStats("s1", { initialSize: 100, finalSize: 40 })
   core.recordOptimizationStats("s2", { initialSize: 10, finalSize: 5 })
 
   const stats = core.readStoredStats()
-  assert.equal(stats.totalPrunedChars, 65)
+  assert.equal(stats.totalOptimizedChars, 65)
   assert.equal(stats.totalOptimizations, 2)
   assert.deepEqual(Object.keys(stats.sessions).sort(), ["s1", "s2"])
 })

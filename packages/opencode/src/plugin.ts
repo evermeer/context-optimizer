@@ -27,6 +27,13 @@ import {
   formatOutcomeMessage,
   summarizeContext,
 } from "../../core/src/payload.js"
+import { applyOptimizationStrategies } from "./strategies.js"
+
+export {
+  applyOptimizationStrategies,
+  OPTIMIZED_ERROR_INPUT_MARKER,
+  OPTIMIZED_OUTPUT_MARKER,
+} from "./strategies.js"
 
 function formatJsonBlock(data: unknown): string {
   return `\n\n${JSON.stringify(data, null, 2)}\n`
@@ -186,7 +193,7 @@ export const ContextOptimizerPlugin = async (dependencies: any = {}) => {
             "cumulative pruning statistics",
             formatJsonBlock({
               totalSessions: Object.keys(storedStats.sessions).length,
-              totalPrunedChars: storedStats.totalPrunedChars,
+              totalOptimizedChars: storedStats.totalOptimizedChars,
               totalOptimizations: storedStats.totalOptimizations,
             }),
           ),
@@ -298,6 +305,18 @@ export const ContextOptimizerPlugin = async (dependencies: any = {}) => {
       "command.execute.before": command,
       "experimental.session.compacting": optimizeContext,
       "experimental.response.cleanup": optimizeContext,
+      "experimental.chat.messages.transform": async (_input: any, output: any) => {
+        try {
+          const { deduped, purgedErrors } = applyOptimizationStrategies(output?.messages)
+          if (deduped || purgedErrors) {
+            writeLog(
+              `[context-optimizer] live optimization: ${deduped} duplicate tool outputs removed, ${purgedErrors} errored tool inputs purged`,
+            )
+          }
+        } catch (error) {
+          writeDiagnostic(`[context-optimizer] live optimization failed: ${error}`)
+        }
+      },
     }
   } catch (error) {
     writeLog(`[context-optimizer] disabled during startup: ${error}`)

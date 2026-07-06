@@ -129,7 +129,7 @@ async function main(): Promise<number> {
         `${JSON.stringify(
           {
             totalSessions: Object.keys(stats.sessions).length,
-            totalPrunedChars: stats.totalPrunedChars,
+            totalOptimizedChars: stats.totalOptimizedChars,
             totalOptimizations: stats.totalOptimizations,
           },
           null,

@@ -17,12 +17,14 @@
 import fs from "node:fs"
 import path from "node:path"
 import process from "node:process"
+import { pathToFileURL } from "node:url"
 
 import { runOptimizer } from "../../core/src/bridge.js"
 import { recordOptimizationStats, resolveEffectiveConfig } from "../../core/src/config.js"
 import { writeLog } from "../../core/src/log.js"
 import { claudeSessionDir } from "../../core/src/paths.js"
 import { DEFAULT_QUERY, formatOutcomeMessage } from "../../core/src/payload.js"
+import { isProtectedTool, PURGE_ERROR_TURNS, toolSignature } from "../../core/src/strategies.js"
 
 // ponytail: only the newest transcript entries feed the optimizer; reranking
 // thousands of old chunks is slow and the pre-prune budget discards them anyway.
@@ -56,19 +58,92 @@ function extractTexts(content: unknown): string[] {
   return texts
 }
 
+const MAX_TOOL_DOC_CHARS = 2000
+
+interface DocItem {
+  kind: "text" | "tool_result"
+  text: string
+  signature?: string
+  isError?: boolean
+  turn?: number
+  protected?: boolean
+}
+
+/**
+ * Converts a Claude Code transcript (JSONL) into optimizer docs, applying the
+ * same strategies the OpenCode adapter runs live:
+ *  - deduplication: identical tool calls (tool + parameters) keep only the
+ *    newest result.
+ *  - purgeErrors: errored tool results older than PURGE_ERROR_TURNS user
+ *    turns are dropped.
+ * Tool outputs used to be discarded entirely; now the surviving ones are fed
+ * to the optimizer alongside the prose.
+ */
 export function transcriptToDocs(transcriptPath: string): string[] {
   const raw = fs.readFileSync(transcriptPath, "utf8")
-  const docs: string[] = []
+  const items: DocItem[] = []
+  const toolUses = new Map<string, { name: string; input: unknown }>()
+  let currentTurn = 0
 
   for (const line of raw.split("\n")) {
     if (!line.trim()) continue
     try {
       const entry = JSON.parse(line)
-      docs.push(...extractTexts(entry?.message?.content))
+      const content = entry?.message?.content
+
+      for (const text of extractTexts(content)) {
+        items.push({ kind: "text", text })
+      }
+      if (entry?.type === "user" && extractTexts(content).length > 0) {
+        currentTurn += 1
+      }
+
+      if (!Array.isArray(content)) continue
+      for (const part of content) {
+        if (!part || typeof part !== "object") continue
+
+        if (part.type === "tool_use" && typeof part.id === "string" && typeof part.name === "string") {
+          toolUses.set(part.id, { name: part.name, input: part.input })
+        }
+
+        if (part.type === "tool_result" && typeof part.tool_use_id === "string") {
+          const use = toolUses.get(part.tool_use_id)
+          if (!use) continue
+
+          const text = extractTexts(part.content).join("\n").slice(0, MAX_TOOL_DOC_CHARS)
+          if (!text) continue
+
+          items.push({
+            kind: "tool_result",
+            text: `[tool ${use.name}] ${text}`,
+            signature: toolSignature(use.name, use.input),
+            isError: part.is_error === true,
+            turn: currentTurn,
+            protected: isProtectedTool(use.name),
+          })
+        }
+      }
     } catch {
       // Skip malformed transcript lines.
     }
   }
+
+  // Deduplication: remember the newest occurrence per tool signature.
+  const newestBySignature = new Map<string, number>()
+  items.forEach((item, index) => {
+    if (item.kind === "tool_result" && item.signature && !item.protected) {
+      newestBySignature.set(item.signature, index)
+    }
+  })
+
+  const docs: string[] = []
+  items.forEach((item, index) => {
+    if (item.kind === "tool_result" && !item.protected) {
+      if (item.signature && newestBySignature.get(item.signature) !== index) return
+      if (item.isError && currentTurn - (item.turn ?? 0) >= PURGE_ERROR_TURNS) return
+    }
+    docs.push(item.text)
+  })
 
   return docs.slice(-MAX_TRANSCRIPT_ENTRIES)
 }
@@ -147,7 +222,10 @@ async function main(): Promise<void> {
   else if (mode === "sessionstart") sessionstart(input)
 }
 
-main().catch((error) => {
-  writeLog(`[context-optimizer] claude hook failed: ${error}`)
-  process.exitCode = 0
-})
+// Only run as a hook when executed directly; tests import transcriptToDocs.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((error) => {
+    writeLog(`[context-optimizer] claude hook failed: ${error}`)
+    process.exitCode = 0
+  })
+}

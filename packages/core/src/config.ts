@@ -80,7 +80,7 @@ export function resolveEffectiveConfig(): EffectiveConfig {
 }
 
 export interface StoredStats {
-  totalPrunedChars: number
+  totalOptimizedChars: number
   totalOptimizations: number
   sessions: Record<string, boolean>
 }
@@ -94,12 +94,12 @@ export function readStoredStats(): StoredStats {
         : {}
 
     return {
-      totalPrunedChars: parseNumeric(parsed.totalPrunedChars, 0),
+      totalOptimizedChars: parseNumeric(parsed.totalOptimizedChars, 0),
       totalOptimizations: parseNumeric(parsed.totalOptimizations, 0),
       sessions,
     }
   } catch {
-    return { totalPrunedChars: 0, totalOptimizations: 0, sessions: {} }
+    return { totalOptimizedChars: 0, totalOptimizations: 0, sessions: {} }
   }
 }
 
@@ -114,9 +114,9 @@ export function recordOptimizationStats(
   result: { initialSize?: unknown; finalSize?: unknown },
 ): void {
   const stats = readStoredStats()
-  const prunedChars = Math.max(0, parseNumeric(result?.initialSize, 0) - parseNumeric(result?.finalSize, 0))
+  const optimizedChars = Math.max(0, parseNumeric(result?.initialSize, 0) - parseNumeric(result?.finalSize, 0))
 
-  stats.totalPrunedChars += prunedChars
+  stats.totalOptimizedChars += optimizedChars
   stats.totalOptimizations += 1
   stats.sessions[sessionID || "global"] = true
 
