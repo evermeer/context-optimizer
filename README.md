@@ -86,6 +86,18 @@ Claude Code hooks cannot rewrite the compaction context directly, so the adapter
 
 Both hooks fail open: on any error Claude Code proceeds untouched.
 
+Slash commands (installed as markdown commands in `~/.claude/commands/context-optimizer*`):
+
+| Command | What it does |
+| --- | --- |
+| `/context-optimizer` | Show help |
+| `/context-optimizer:context` | Show the current session's context/token breakdown (estimated from the visible conversation) |
+| `/context-optimizer:stats` | Show cumulative pruning/compaction stats (`context-optimizer stats`) |
+| `/context-optimizer:compress` | Run one compression pass on the current conversation (`context-optimizer optimize`) |
+| `/context-optimizer:config [get\|set\|reset]` | Show or update safe settings (`context-optimizer config`) |
+
+These shell out to the same `context-optimizer` CLI (`npx @evermeer/context-optimizer <cmd>`) that backs the OpenCode commands, so config and stats are shared across both platforms.
+
 ## Configuration
 
 All state lives in `~/.context-optimizer/` (override with the `CONTEXT_OPTIMIZER_HOME` env var): `config.json`, `stats.json`, `context-optimizer.log`, and the Python bridge.

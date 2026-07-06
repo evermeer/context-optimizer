@@ -9,6 +9,7 @@ import {
 } from "../../core/src/bridge.js"
 import {
   SAFE_CONFIG_KEYS,
+  normalizeConfigKey,
   parseJsonValue,
   parseNumeric,
   readStoredConfig,
@@ -63,11 +64,6 @@ function buildConfigHelp(): string {
 
 function normalizeCommandName(commandName: unknown): string {
   return String(commandName || "").trim().replace(/^\//, "")
-}
-
-function normalizeConfigKey(key: unknown): string | null {
-  const normalized = String(key || "").trim().toLowerCase()
-  return (SAFE_CONFIG_KEYS as readonly string[]).includes(normalized) ? normalized : null
 }
 
 function resolveToastClient(dependencies: any = {}, input: any = {}, output: any = {}) {

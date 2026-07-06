@@ -21,6 +21,11 @@ export function parseNumeric(value: unknown, fallback = 0): number {
   return Number.isFinite(parsed) ? parsed : fallback
 }
 
+export function normalizeConfigKey(key: unknown): string | null {
+  const normalized = String(key || "").trim().toLowerCase()
+  return (SAFE_CONFIG_KEYS as readonly string[]).includes(normalized) ? normalized : null
+}
+
 export function parseJsonValue<T extends object>(raw: unknown, fallback: T): T {
   if (!raw) return fallback
   if (typeof raw === "object") return raw as T

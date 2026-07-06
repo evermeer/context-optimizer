@@ -137,6 +137,12 @@ export function installClaudeAdapter(): void {
   fs.mkdirSync(claudeConfigDir(), { recursive: true })
   fs.writeFileSync(settingsPath, `${JSON.stringify(settings, null, 2)}\n`, "utf8")
   log(`Claude Code hooks registered in ${settingsPath}`)
+
+  const commandsSource = path.join(packageRoot(), "packages", "claude-code", "commands")
+  const commandsTarget = path.join(claudeConfigDir(), "commands")
+  fs.mkdirSync(commandsTarget, { recursive: true })
+  fs.cpSync(commandsSource, commandsTarget, { recursive: true })
+  log(`Claude Code /context-optimizer slash commands installed in ${commandsTarget}`)
 }
 
 export function install(options: InstallOptions = {}): void {

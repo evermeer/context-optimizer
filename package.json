@@ -15,7 +15,8 @@
   },
   "files": [
     "dist",
-    "python"
+    "python",
+    "packages/claude-code/commands"
   ],
   "scripts": {
     "build": "tsup",
