@@ -45,7 +45,7 @@ function buildCommandHelp(): string {
       "/context-optimizer — show this help",
       "/context-optimizer context — show the current session token/context breakdown",
       "/context-optimizer stats — show cumulative pruning statistics",
-      "/context-optimizer compress — run one compression pass",
+      "/context-optimizer compact — run one compaction pass",
       "/context-optimizer config — show or update safe plugin settings",
     ].join("\n"),
   )
@@ -184,7 +184,7 @@ export const ContextOptimizerPlugin = async (dependencies: any = {}) => {
         return
       }
 
-      if (commandArgs === "compress") {
+      if (commandArgs === "compact") {
         const payload = buildPayload(input, output)
         const result = await run({
           payload: {
@@ -196,7 +196,7 @@ export const ContextOptimizerPlugin = async (dependencies: any = {}) => {
           cliPath,
         })
 
-        reply(buildCommandOutput("compression run", formatJsonBlock(result)))
+        reply(buildCommandOutput("compaction run", formatJsonBlock(result)))
         return
       }
 
@@ -266,9 +266,9 @@ export const ContextOptimizerPlugin = async (dependencies: any = {}) => {
           description: "Show cumulative pruning statistics across sessions",
           template: "Show cumulative pruning statistics for the context optimizer.",
         },
-        "context-optimizer compress": {
-          description: "Run a single compression pass",
-          template: "Run one compression pass for the current session context.",
+        "context-optimizer compact": {
+          description: "Run a single compaction pass",
+          template: "Run one compaction pass for the current session context.",
         },
         "context-optimizer config": {
           description: "Show or update safe plugin settings",

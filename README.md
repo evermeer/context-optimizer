@@ -83,7 +83,7 @@ Slash commands:
 | `/context-optimizer` | Show help |
 | `/context-optimizer context` | Show the current session context breakdown |
 | `/context-optimizer stats` | Show cumulative pruning/compaction stats |
-| `/context-optimizer compress` | Run one compression pass immediately |
+| `/context-optimizer compact` | Run one compaction pass immediately |
 | `/context-optimizer config [get\|set\|reset]` | Show or update safe settings (`timeout_ms`, `min_chars`, `model_limits`) |
 
 ### Claude Code
@@ -113,7 +113,7 @@ Slash commands (installed as markdown commands in `~/.claude/commands/context-op
 | `/context-optimizer` | Show help |
 | `/context-optimizer:context` | Show the current session's context/token breakdown (estimated from the visible conversation) |
 | `/context-optimizer:stats` | Show cumulative pruning/compaction stats (`context-optimizer stats`) |
-| `/context-optimizer:compress` | Run one compression pass on the current conversation (`context-optimizer optimize`) |
+| `/context-optimizer:compact` | Run one compaction pass on the current conversation (`context-optimizer optimize`) |
 | `/context-optimizer:config [get\|set\|reset]` | Show or update safe settings (`context-optimizer config`) |
 
 These shell out to the same `context-optimizer` CLI (`npx @evermeer/context-optimizer <cmd>`) that backs the OpenCode commands, so config and stats are shared across both platforms.
