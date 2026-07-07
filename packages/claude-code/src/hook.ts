@@ -182,13 +182,13 @@ async function precompact(input: HookInput): Promise<void> {
 
   const outcome = formatOutcomeMessage(result)
   writeLog(`[context-optimizer] claude ${outcome}`)
-  // Surface the full result JSON on /compact, mirroring the compress command output.
-  // systemMessage is Claude Code's native channel for a hook to show the user a line.
-  process.stdout.write(JSON.stringify({ systemMessage: JSON.stringify(result, null, 2) }))
 
   if (result.ok && result.optimizedContext) {
     fs.mkdirSync(claudeSessionDir(), { recursive: true })
-    fs.writeFileSync(sessionFile(sessionID), result.optimizedContext, "utf8")
+    // PreCompact hook output (e.g. systemMessage) isn't shown to the user — only
+    // SessionStart's additionalContext is chat-visible, so stash the stats here
+    // and surface them from sessionstart() once compaction has actually run.
+    fs.writeFileSync(sessionFile(sessionID), JSON.stringify({ outcome, optimizedContext: result.optimizedContext }), "utf8")
     recordOptimizationStats(sessionID, result)
   }
 }
@@ -199,14 +199,24 @@ function sessionstart(input: HookInput): void {
   const file = sessionFile(input.session_id || "unknown")
   if (!fs.existsSync(file)) return
 
-  const optimized = fs.readFileSync(file, "utf8")
+  const raw = fs.readFileSync(file, "utf8")
   fs.rmSync(file, { force: true })
+
+  let outcome = ""
+  let optimized = raw
+  try {
+    const parsed = JSON.parse(raw)
+    outcome = parsed.outcome || ""
+    optimized = parsed.optimizedContext || ""
+  } catch {
+    // Pre-upgrade session file format (plain optimized text only).
+  }
 
   process.stdout.write(
     JSON.stringify({
       hookSpecificOutput: {
         hookEventName: "SessionStart",
-        additionalContext: `## Optimized Context\n\n${optimized}`,
+        additionalContext: `${outcome}\n\n## Optimized Context\n\n${optimized}`,
       },
     }),
   )
