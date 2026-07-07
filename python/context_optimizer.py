@@ -98,10 +98,33 @@ class ContextOptimizer:
 
         return unique_docs
 
+    def _prefilter(self, query, docs, cap):
+        """Shortlist docs with the fast embedder before the costly cross-encoder.
+
+        The cross-encoder scores every (query, doc) pair with a full forward pass;
+        on CPU that dominates runtime once there are many docs. The embedder is
+        already loaded (used by dedupe) and ranks all docs by cosine-to-query in a
+        single batch, so we hand the cross-encoder only the top `cap` candidates.
+        Only max_chunks docs survive to compression, so a generous cap virtually
+        never changes the final selection.
+        """
+        if len(docs) <= cap:
+            return docs
+
+        doc_emb = self.embedder.encode(docs, convert_to_tensor=True)
+        query_emb = self.embedder.encode(query or " ", convert_to_tensor=True)
+        sims = util.cos_sim(query_emb, doc_emb)[0]
+        top = sims.topk(min(cap, len(docs))).indices.tolist()
+        return [docs[i] for i in top]
+
     def _pre_prune(self, query, docs):
         """Rank + dedupe the docs and keep the best ones that fit the char budget."""
         if not docs or self.total_prune_budget_chars <= 0:
             return []
+
+        # ponytail: embedder pre-filter caps cross-encoder work; grows with
+        # max_chunks so the survivors are always drawn from a deep enough pool.
+        docs = self._prefilter(query, docs, max(40, self.max_chunks * 4))
 
         scores = self.reranker.predict([(query, doc) for doc in docs])
         score_for_doc = {}

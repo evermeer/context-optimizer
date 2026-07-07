@@ -4,7 +4,7 @@ import process from "node:process"
 
 import { configPath, statsPath } from "./paths.js"
 
-export const DEFAULT_TIMEOUT_MS = 120000
+export const DEFAULT_TIMEOUT_MS = 300000
 export const DEFAULT_MIN_COMPACTION_CHARS = 2000
 export const DEFAULT_COMPRESSION_RATE = 0.5
 export const DEFAULT_MAX_CHUNKS = 6
