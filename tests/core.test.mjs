@@ -122,16 +122,25 @@ test("parseConfigValue validates ints, rate bounds, strings, and JSON", () => {
   assert.equal(core.parseConfigValue("model_limits", "not json").ok, false)
 })
 
-test("recordOptimizationStats accumulates optimized chars per session", () => {
-  core.recordOptimizationStats("s1", { initialSize: 100, finalSize: 40 })
-  core.recordOptimizationStats("s2", { initialSize: 10, finalSize: 5 })
+test("recordOptimizationStats appends CSV rows and the stats table aggregates them", () => {
+  core.recordOptimizationStats("s1", { initialSize: 100, finalSize: 40 }, "claude-code", "manual")
+  core.recordOptimizationStats("s2", { initialSize: 10, finalSize: 5 }, "opencode")
 
-  const stats = core.readStoredStats()
-  assert.equal(stats.totalOptimizedChars, 65)
-  assert.equal(stats.totalInitialChars, 110)
-  assert.equal(stats.totalOptimizations, 2)
-  assert.match(stats.lastOptimizedAt, /^\d{4}-\d{2}-\d{2}T/)
-  assert.deepEqual(Object.keys(stats.sessions).sort(), ["s1", "s2"])
+  const rows = core.readResults()
+  assert.equal(rows.length, 2)
+  assert.equal(rows[0].cli, "claude-code")
+  assert.equal(rows[0].sessionID, "s1")
+  assert.equal(rows[0].trigger, "manual")
+  assert.equal(rows[0].initialChars, 100)
+  assert.equal(rows[0].resultChars, 40)
+  assert.equal(rows[0].savedChars, 60)
+  assert.match(rows[1].timestamp, /^\d{4}-\d{2}-\d{2}T/)
+
+  const table = core.formatStatsTable(rows)
+  assert.match(table, /metric\s+last\s+session\s+today\s+week\s+month\s+overall/)
+  // "last" and "session" columns cover only the newest row (s2), the rest cover both.
+  assert.match(table, /compactions\s+1\s+1\s+2\s+2\s+2\s+2/)
+  assert.match(table, /saved %\s+50%\s+50%\s+59%\s+59%\s+59%\s+59%/)
 })
 
 test("runOptimizer fails open when the bridge is missing", async () => {

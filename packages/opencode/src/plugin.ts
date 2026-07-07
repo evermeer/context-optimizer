@@ -8,7 +8,8 @@ import {
   normalizeConfigKey,
   parseConfigValue,
   readStoredConfig,
-  readStoredStats,
+  formatStatsTable,
+  readResults,
   recordOptimizationStats,
   removeStoredConfig,
   resolveEffectiveConfig,
@@ -126,7 +127,7 @@ export const ContextOptimizerPlugin = async (dependencies: any = {}) => {
 
       writeLog(formatOutcomeMessage(result))
       if (result?.ok && result?.optimizedContext) {
-        recordOptimizationStats(input?.sessionID, result)
+        recordOptimizationStats(input?.sessionID, result, "opencode")
       }
       // applyOptimizedContext is fail-open: it only rewrites output.context
       // when the optimizer returned real optimized content.
@@ -170,17 +171,7 @@ export const ContextOptimizerPlugin = async (dependencies: any = {}) => {
       }
 
       if (commandArgs === "stats") {
-        const storedStats = readStoredStats()
-        reply(
-          buildCommandOutput(
-            "cumulative pruning statistics",
-            formatJsonBlock({
-              totalSessions: Object.keys(storedStats.sessions).length,
-              totalOptimizedChars: storedStats.totalOptimizedChars,
-              totalOptimizations: storedStats.totalOptimizations,
-            }),
-          ),
-        )
+        reply(buildCommandOutput("cumulative pruning statistics", `\n\`\`\`\n${formatStatsTable(readResults())}\n\`\`\`\n`))
         return
       }
 

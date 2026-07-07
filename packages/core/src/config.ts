@@ -2,7 +2,7 @@ import fs from "node:fs"
 import path from "node:path"
 import process from "node:process"
 
-import { configPath, statsPath } from "./paths.js"
+import { configPath, resultsCsvPath } from "./paths.js"
 
 export const DEFAULT_TIMEOUT_MS = 300000
 export const DEFAULT_MIN_COMPACTION_CHARS = 2000
@@ -209,54 +209,115 @@ export function parseConfigValue(key: string, raw: string): ParsedConfigValue {
   return { ok: true, value: num }
 }
 
-export interface StoredStats {
-  totalOptimizedChars: number
-  totalInitialChars: number
-  totalOptimizations: number
-  lastOptimizedAt: string
-  sessions: Record<string, boolean>
+const RESULTS_CSV_HEADER = "timestamp,cli,session_id,trigger,initial_chars,result_chars,saved_chars"
+
+export interface ResultRow {
+  timestamp: string
+  cli: string
+  sessionID: string
+  trigger: string
+  initialChars: number
+  resultChars: number
+  savedChars: number
 }
 
-export function readStoredStats(): StoredStats {
-  try {
-    const parsed = parseJsonValue<Record<string, unknown>>(fs.readFileSync(statsPath(), "utf8"), {})
-    const sessions =
-      parsed.sessions && typeof parsed.sessions === "object"
-        ? (parsed.sessions as Record<string, boolean>)
-        : {}
-
-    return {
-      totalOptimizedChars: parseNumeric(parsed.totalOptimizedChars, 0),
-      totalInitialChars: parseNumeric(parsed.totalInitialChars, 0),
-      totalOptimizations: parseNumeric(parsed.totalOptimizations, 0),
-      lastOptimizedAt: typeof parsed.lastOptimizedAt === "string" ? parsed.lastOptimizedAt : "",
-      sessions,
-    }
-  } catch {
-    return { totalOptimizedChars: 0, totalInitialChars: 0, totalOptimizations: 0, lastOptimizedAt: "", sessions: {} }
-  }
+function csvField(value: unknown): string {
+  // ponytail: session ids/cli names never legitimately contain CSV control chars; strip instead of quoting
+  return String(value ?? "").replace(/[",\r\n]/g, "_")
 }
 
-export function writeStoredStats(stats: StoredStats): void {
-  const file = statsPath()
-  fs.mkdirSync(path.dirname(file), { recursive: true })
-  fs.writeFileSync(file, `${JSON.stringify(stats, null, 2)}\n`, "utf8")
-}
-
+/** Append one compaction result to the shared results CSV. `cli` is "claude-code", "opencode", or "cli". */
 export function recordOptimizationStats(
   sessionID: string | undefined,
   result: { initialSize?: unknown; finalSize?: unknown },
+  cli = "cli",
+  trigger = "",
 ): void {
-  const stats = readStoredStats()
-  const initialSize = Math.max(0, parseNumeric(result?.initialSize, 0))
-  const finalSize = Math.max(0, parseNumeric(result?.finalSize, 0))
-  const optimizedChars = Math.max(0, initialSize - finalSize)
+  const initialChars = Math.max(0, parseNumeric(result?.initialSize, 0))
+  const resultChars = Math.max(0, parseNumeric(result?.finalSize, 0))
+  const savedChars = Math.max(0, initialChars - resultChars)
 
-  stats.totalOptimizedChars += optimizedChars
-  stats.totalInitialChars += initialSize
-  stats.totalOptimizations += 1
-  stats.lastOptimizedAt = new Date().toISOString()
-  stats.sessions[sessionID || "global"] = true
+  const file = resultsCsvPath()
+  fs.mkdirSync(path.dirname(file), { recursive: true })
+  const row = [
+    new Date().toISOString(),
+    csvField(cli),
+    csvField(sessionID || "global"),
+    csvField(trigger),
+    initialChars,
+    resultChars,
+    savedChars,
+  ].join(",")
+  const prefix = fs.existsSync(file) ? "" : `${RESULTS_CSV_HEADER}\n`
+  fs.appendFileSync(file, `${prefix}${row}\n`, "utf8")
+}
 
-  writeStoredStats(stats)
+export function readResults(): ResultRow[] {
+  try {
+    const rows: ResultRow[] = []
+    for (const line of fs.readFileSync(resultsCsvPath(), "utf8").split("\n").slice(1)) {
+      if (!line.trim()) continue
+      const [timestamp, cli, sessionID, trigger, initial, result, saved] = line.split(",")
+      rows.push({
+        timestamp: timestamp || "",
+        cli: cli || "",
+        sessionID: sessionID || "",
+        trigger: trigger || "",
+        initialChars: parseNumeric(initial, 0),
+        resultChars: parseNumeric(result, 0),
+        savedChars: parseNumeric(saved, 0),
+      })
+    }
+    return rows
+  } catch {
+    return []
+  }
+}
+
+/**
+ * Render the results CSV as an aligned text table. Columns: last compact,
+ * the latest compact's session, today (local calendar day), week (trailing
+ * 7 days), month (trailing 30 days), overall.
+ */
+export function formatStatsTable(rows: ResultRow[], now = new Date()): string {
+  const latest = rows[rows.length - 1]
+  const dayMs = 24 * 60 * 60 * 1000
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
+  const windows: Array<[string, (row: ResultRow) => boolean]> = [
+    ["last", (row) => row === latest],
+    ["session", (row) => !!latest && row.sessionID === latest.sessionID],
+    ["today", (row) => Date.parse(row.timestamp) >= startOfToday],
+    ["week", (row) => now.getTime() - Date.parse(row.timestamp) < 7 * dayMs],
+    ["month", (row) => now.getTime() - Date.parse(row.timestamp) < 30 * dayMs],
+    ["overall", () => true],
+  ]
+
+  const fmt = (n: number) => n.toLocaleString("en-US")
+  const columns = windows.map(([, match]) => {
+    const selected = rows.filter(match)
+    const initial = selected.reduce((total, row) => total + row.initialChars, 0)
+    const result = selected.reduce((total, row) => total + row.resultChars, 0)
+    const saved = selected.reduce((total, row) => total + row.savedChars, 0)
+    return [
+      fmt(selected.length),
+      fmt(initial),
+      fmt(result),
+      fmt(saved),
+      initial > 0 ? `${Math.round((saved / initial) * 100)}%` : "0%",
+    ]
+  })
+
+  const metrics = ["compactions", "initial chars", "result chars", "saved chars", "saved %"]
+  const table = [
+    ["metric", ...windows.map(([label]) => label)],
+    ...metrics.map((metric, index) => [metric, ...columns.map((column) => column[index])]),
+  ]
+  const widths = table[0].map((_, col) => Math.max(...table.map((row) => row[col].length)))
+  return table
+    .map((row) =>
+      row
+        .map((cell, col) => (col === 0 ? cell.padEnd(widths[col]) : cell.padStart(widths[col])))
+        .join("  "),
+    )
+    .join("\n")
 }

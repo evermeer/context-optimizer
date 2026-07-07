@@ -15,8 +15,8 @@ export function configPath(): string {
   return path.join(dataDir(), "config.json")
 }
 
-export function statsPath(): string {
-  return path.join(dataDir(), "stats.json")
+export function resultsCsvPath(): string {
+  return path.join(dataDir(), "context-optimizer-results.csv")
 }
 
 export function pythonDir(): string {

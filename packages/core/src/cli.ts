@@ -7,7 +7,8 @@ import {
   normalizeConfigKey,
   parseConfigValue,
   readStoredConfig,
-  readStoredStats,
+  formatStatsTable,
+  readResults,
   recordOptimizationStats,
   removeStoredConfig,
   resolveEffectiveConfig,
@@ -111,35 +112,13 @@ async function main(): Promise<number> {
       const payload = JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}")
       const result = await runOptimizer({ payload })
       // Same as the adapters: only a real optimization counts toward stats.
-      if (result.ok && result.optimizedContext) recordOptimizationStats(payload.sessionID, result)
+      if (result.ok && result.optimizedContext) recordOptimizationStats(payload.sessionID, result, "cli")
       process.stdout.write(`${JSON.stringify(result, null, 2)}\n`)
       return result.ok ? 0 : 1
     }
 
     case "stats": {
-      const stats = readStoredStats()
-      const runs = stats.totalOptimizations
-      const sessions = Object.keys(stats.sessions).length
-      const percentSaved =
-        stats.totalInitialChars > 0
-          ? Math.round((stats.totalOptimizedChars / stats.totalInitialChars) * 100)
-          : 0
-      process.stdout.write(
-        `${JSON.stringify(
-          {
-            totalSessions: sessions,
-            totalOptimizations: runs,
-            totalInitialChars: stats.totalInitialChars,
-            totalOptimizedChars: stats.totalOptimizedChars,
-            percentSaved,
-            avgOptimizedCharsPerRun: runs > 0 ? Math.round(stats.totalOptimizedChars / runs) : 0,
-            avgOptimizedCharsPerSession: sessions > 0 ? Math.round(stats.totalOptimizedChars / sessions) : 0,
-            lastOptimizedAt: stats.lastOptimizedAt || null,
-          },
-          null,
-          2,
-        )}\n`,
-      )
+      process.stdout.write(`${formatStatsTable(readResults())}\n`)
       return 0
     }
 

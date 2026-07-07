@@ -189,7 +189,7 @@ async function precompact(input: HookInput): Promise<void> {
     // the user via PreCompact's systemMessage, which renders in the UI without
     // entering Claude's context, and persisted via recordOptimizationStats.
     fs.writeFileSync(sessionFile(sessionID), result.optimizedContext, "utf8")
-    recordOptimizationStats(sessionID, result)
+    recordOptimizationStats(sessionID, result, "claude-code", input.trigger || "")
   }
 
   process.stdout.write(JSON.stringify({ systemMessage: formatOutcomeMessage(result) }))
