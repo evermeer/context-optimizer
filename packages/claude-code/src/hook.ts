@@ -192,7 +192,7 @@ async function precompact(input: HookInput): Promise<void> {
     recordOptimizationStats(sessionID, result)
   }
 
-  process.stdout.write(JSON.stringify({ systemMessage: `context-optimizer: ${formatOutcomeMessage(result)}` }))
+  process.stdout.write(JSON.stringify({ systemMessage: formatOutcomeMessage(result) }))
 }
 
 function sessionstart(input: HookInput): void {
