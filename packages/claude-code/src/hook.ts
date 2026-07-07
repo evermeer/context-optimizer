@@ -182,9 +182,9 @@ async function precompact(input: HookInput): Promise<void> {
 
   const outcome = formatOutcomeMessage(result)
   writeLog(`[context-optimizer] claude ${outcome}`)
-  // Surface the savings summary on /compact, mirroring the compress command.
+  // Surface the full result JSON on /compact, mirroring the compress command output.
   // systemMessage is Claude Code's native channel for a hook to show the user a line.
-  process.stdout.write(JSON.stringify({ systemMessage: outcome }))
+  process.stdout.write(JSON.stringify({ systemMessage: JSON.stringify(result, null, 2) }))
 
   if (result.ok && result.optimizedContext) {
     fs.mkdirSync(claudeSessionDir(), { recursive: true })
