@@ -128,7 +128,9 @@ test("recordOptimizationStats accumulates optimized chars per session", () => {
 
   const stats = core.readStoredStats()
   assert.equal(stats.totalOptimizedChars, 65)
+  assert.equal(stats.totalInitialChars, 110)
   assert.equal(stats.totalOptimizations, 2)
+  assert.match(stats.lastOptimizedAt, /^\d{4}-\d{2}-\d{2}T/)
   assert.deepEqual(Object.keys(stats.sessions).sort(), ["s1", "s2"])
 })
 

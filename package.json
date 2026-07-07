@@ -1,6 +1,6 @@
 {
   "name": "@evermeer/context-optimizer",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Context compression (rerank + dedupe + LLMLingua) for OpenCode and Claude Code",
   "license": "MIT",
   "type": "module",

@@ -143,6 +143,9 @@ class ContextOptimizer:
         return compressed["compressed_prompt"]
 
     def optimize(self, query, docs=None):
+        # The reranker tokenizer rejects a non-str query; docs are already
+        # coerced by _normalize_doc, so this is the last unguarded model input.
+        query = str(query) if query is not None else ""
         docs = [
             normalized
             for normalized in (self._normalize_doc(doc) for doc in (docs or []))

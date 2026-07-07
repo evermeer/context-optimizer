@@ -211,7 +211,9 @@ export function parseConfigValue(key: string, raw: string): ParsedConfigValue {
 
 export interface StoredStats {
   totalOptimizedChars: number
+  totalInitialChars: number
   totalOptimizations: number
+  lastOptimizedAt: string
   sessions: Record<string, boolean>
 }
 
@@ -225,11 +227,13 @@ export function readStoredStats(): StoredStats {
 
     return {
       totalOptimizedChars: parseNumeric(parsed.totalOptimizedChars, 0),
+      totalInitialChars: parseNumeric(parsed.totalInitialChars, 0),
       totalOptimizations: parseNumeric(parsed.totalOptimizations, 0),
+      lastOptimizedAt: typeof parsed.lastOptimizedAt === "string" ? parsed.lastOptimizedAt : "",
       sessions,
     }
   } catch {
-    return { totalOptimizedChars: 0, totalOptimizations: 0, sessions: {} }
+    return { totalOptimizedChars: 0, totalInitialChars: 0, totalOptimizations: 0, lastOptimizedAt: "", sessions: {} }
   }
 }
 
@@ -244,10 +248,14 @@ export function recordOptimizationStats(
   result: { initialSize?: unknown; finalSize?: unknown },
 ): void {
   const stats = readStoredStats()
-  const optimizedChars = Math.max(0, parseNumeric(result?.initialSize, 0) - parseNumeric(result?.finalSize, 0))
+  const initialSize = Math.max(0, parseNumeric(result?.initialSize, 0))
+  const finalSize = Math.max(0, parseNumeric(result?.finalSize, 0))
+  const optimizedChars = Math.max(0, initialSize - finalSize)
 
   stats.totalOptimizedChars += optimizedChars
+  stats.totalInitialChars += initialSize
   stats.totalOptimizations += 1
+  stats.lastOptimizedAt = new Date().toISOString()
   stats.sessions[sessionID || "global"] = true
 
   writeStoredStats(stats)
