@@ -34,7 +34,7 @@ On the context that actually gets compacted, expect roughly **40–60% fewer tok
 | Disk space | ~3–5 GB free (models) | — |
 
 > [!NOTE]
-> A CUDA GPU is strongly recommended. The optimizer runs CPU-only too, but compression is noticeably slower.
+> A CUDA GPU is strongly recommended. The optimizer runs CPU-only too, but compression is noticeably slower. (~2k/s)
 > On **Windows, CPU-only** machines, install the CPU PyTorch wheel *before* running the installer so it doesn't pull a large CUDA build:
 > `python -m pip install --index-url https://download.pytorch.org/whl/cpu torch`
 
