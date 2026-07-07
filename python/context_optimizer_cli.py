@@ -32,7 +32,12 @@ except ModuleNotFoundError as exc:
 
 
 def main() -> None:
-    raw = sys.stdin.read()
+    # The adapters pipe UTF-8 JSON on stdin. Decode the raw bytes as UTF-8
+    # explicitly: on Windows sys.stdin defaults to the locale codec (cp1252),
+    # which turns UTF-8 continuation bytes into lone surrogates that pass the
+    # isinstance(str) check but make the HF tokenizer raise "TextInputSequence
+    # must be str". errors="replace" keeps a stray malformed byte from crashing.
+    raw = sys.stdin.buffer.read().decode("utf-8", errors="replace")
     payload: Dict[str, Any] = {}
     try:
         payload = json.loads(raw or "{}")

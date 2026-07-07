@@ -1,6 +1,6 @@
 {
   "name": "@evermeer/context-optimizer",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Context compression (rerank + dedupe + LLMLingua) for OpenCode and Claude Code",
   "license": "MIT",
   "type": "module",
@@ -28,7 +28,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/evermeer/context-optimizer.git"
+    "url": "git+https://github.com/evermeer/context-optimizer.git"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
