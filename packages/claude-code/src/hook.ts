@@ -184,13 +184,15 @@ async function precompact(input: HookInput): Promise<void> {
 
   if (result.ok && result.optimizedContext) {
     fs.mkdirSync(claudeSessionDir(), { recursive: true })
-    // Neither PreCompact nor SessionStart has a channel that shows text to the
-    // user without also feeding it to the model, so only the restored content
-    // (not the stats) travels through the hand-off file. Stats are persisted
-    // separately via recordOptimizationStats and checked with `/context-optimizer:stats`.
+    // Only the restored content (no stats) travels through the hand-off file:
+    // SessionStart additionalContext is fed to the model. Stats are shown to
+    // the user via PreCompact's systemMessage, which renders in the UI without
+    // entering Claude's context, and persisted via recordOptimizationStats.
     fs.writeFileSync(sessionFile(sessionID), result.optimizedContext, "utf8")
     recordOptimizationStats(sessionID, result)
   }
+
+  process.stdout.write(JSON.stringify({ systemMessage: `context-optimizer: ${formatOutcomeMessage(result)}` }))
 }
 
 function sessionstart(input: HookInput): void {
