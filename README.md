@@ -20,10 +20,13 @@
 - **Two platforms, one config** — works with both OpenCode and Claude Code, sharing a single config and stats store.
 - **Tunable or zero-config** — every model and threshold is configurable per-model or globally, but the defaults just work.
 - **GPU or CPU** — uses CUDA when available, and falls back to lighter CPU models automatically.
+- **Fully automatic** — runs on every compaction, and optionally on every chat turn (OpenCode only). No (extra) need to execute `/compact` yourself.
 
 Both platforms compress the session on compaction; OpenCode additionally optimizes each chat turn live (Claude Code has no hook for that — see [How it works per platform](#how-it-works-per-platform)).
 
 On the context that actually gets compacted, expect roughly **40–60% fewer tokens** (LLMLingua-2 at the default `0.5` rate, after rerank + dedup pruning). Whole-session savings depend on how much of the session is compactable — and the exact `% saved` is measured on every compaction and you can retrieve stats, so you never have to trust a headline number.
+
+When the conversation being compacted is small, the bookkeeping around compaction costs more than the compaction saves. You can rely on the automatic compacting mechanism instead of manually executing `/compact`.
 
 ## Reviews:
 
