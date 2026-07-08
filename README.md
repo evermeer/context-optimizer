@@ -15,7 +15,7 @@
 
 ## Highlights
 
-- **Local & private** — all ML runs on your machine; your context never leaves it.
+- **Local** — all ML runs on your machine.
 - **Fails open** — if Python or a model is missing, context is passed through untouched. It can't break a session.
 - **Two platforms, one config** — works with both OpenCode and Claude Code, sharing a single config and stats store.
 - **Tunable or zero-config** — every model and threshold is configurable per-model or globally, but the defaults just work.
@@ -23,7 +23,7 @@
 
 Both platforms compress the session on compaction; OpenCode additionally optimizes each chat turn live (Claude Code has no hook for that — see [How it works per platform](#how-it-works-per-platform)).
 
-On the context that actually gets compacted, expect roughly **40–60% fewer tokens** (LLMLingua-2 at the default `0.5` rate, after rerank + dedup pruning). Whole-session savings depend on how much of the session is compactable — and the exact `% saved` is measured and reported live on every compaction, so you never have to trust a headline number.
+On the context that actually gets compacted, expect roughly **40–60% fewer tokens** (LLMLingua-2 at the default `0.5` rate, after rerank + dedup pruning). Whole-session savings depend on how much of the session is compactable — and the exact `% saved` is measured on every compaction and you can retrieve stats, so you never have to trust a headline number.
 
 ## Reviews:
 
@@ -95,7 +95,7 @@ Slash commands:
 | `/context-optimizer` | Show help |
 | `/context-optimizer context` | Show the current session context breakdown |
 | `/context-optimizer stats` | Show cumulative pruning/compaction stats |
-| `/context-optimizer compact` | Run one compaction pass immediately |
+| `/context-optimizer compact` | Run one compaction pass immediately. Tip: run /compact instead so that it runs native and does not need an LLM to interpret the command. |
 | `/context-optimizer config [get\|set\|reset]` | Show or update safe settings (`timeout_ms`, `min_chars`, `model_limits`) |
 
 ### Claude Code
