@@ -7,7 +7,7 @@
 [![status](https://img.shields.io/badge/status-experimental-orange)](#)
 [![platforms](https://img.shields.io/badge/for-OpenCode%20%26%20Claude%20Code-8A2BE2)](#)
 
-**Keep your coding agent's context small.** When a session gets compacted, Context Optimizer reranks the relevant parts, drops duplicates, and compresses the rest with a local ML pipeline ([LLMLingua-2](https://github.com/microsoft/LLMLingua) + [Sentence Transformers](https://github.com/huggingface/sentence-transformers)) — so more of the window stays useful and fewer tokens get billed. Everything runs on your machine; nothing is sent to a third party.
+**Keep your coding agent's context small.** When a session gets compacted, Context Optimizer reranks the relevant parts, drops duplicates, and compresses the rest with a local ML pipeline ([LLMLingua-2](https://github.com/microsoft/LLMLingua) + [Sentence Transformers](https://github.com/huggingface/sentence-transformers)) — so more of the window stays useful and fewer tokens get billed. Everything runs on your machine.
 
 > [!WARNING]
 > This plugin is still experimental. (It works on my machine)
@@ -25,6 +25,18 @@ Both platforms compress the session on compaction; OpenCode additionally optimiz
 
 On the context that actually gets compacted, expect roughly **40–60% fewer tokens** (LLMLingua-2 at the default `0.5` rate, after rerank + dedup pruning). Whole-session savings depend on how much of the session is compactable — and the exact `% saved` is measured and reported live on every compaction, so you never have to trust a headline number.
 
+## Reviews:
+
+> Quality can even improve in practice. If the plugin prevents Claude from reading lots of irrelevant files, the compacted context may actually be more focused on the task. But that depends on the nature of your work and whether the filtered information was truly irrelevant.
+
+> So my expectation would be:
+Smaller compacted context: likely yes, often.
+Same or better effective quality: often, if the plugin successfully removes noise.
+
+> For long Claude Code sessions I would actually expect this pipeline to outperform native /compact fairly often.
+
+> /compact will almost certainly operate on a substantially smaller context. In many coding sessions the resulting compact may actually be higher quality because noise is removed first. However, the process is inherently lossy and cannot guarantee equal quality in every case.
+
 ## Requirements
 
 | Requirement | Minimum | How to check |
@@ -34,7 +46,7 @@ On the context that actually gets compacted, expect roughly **40–60% fewer tok
 | Disk space | ~3–5 GB free (models) | — |
 
 > [!NOTE]
-> A CUDA GPU is strongly recommended. The optimizer runs CPU-only too, but compression is noticeably slower. (~2k/s)
+> A CUDA GPU is strongly recommended. The optimizer runs CPU-only too, but compression is noticeably slower.
 > On **Windows, CPU-only** machines, install the CPU PyTorch wheel *before* running the installer so it doesn't pull a large CUDA build:
 > `python -m pip install --index-url https://download.pytorch.org/whl/cpu torch`
 
@@ -126,7 +138,7 @@ Environment variables win over `config.json`, which wins over defaults:
 
 | Setting | Env var | Default | What it does |
 | --- | --- | --- | --- |
-| `timeout_ms` | `CONTEXT_OPTIMIZER_TIMEOUT_MS` | `120000` | How long to wait for the Python bridge before failing open |
+| `timeout_ms` | `CONTEXT_OPTIMIZER_TIMEOUT_MS` | `300000` | How long to wait for the Python bridge before failing open |
 | `min_chars` | `CONTEXT_OPTIMIZER_MIN_CHARS` | `2000` | Minimum context size before optimization runs |
 | `compression_rate` | `CONTEXT_OPTIMIZER_COMPRESSION_RATE` | `0.5` | Fraction of tokens LLMLingua keeps (0–1); higher keeps more detail |
 | `max_chunks` | `CONTEXT_OPTIMIZER_MAX_CHUNKS` | `6` | Max ranked chunks kept before compression (positive integer) |
