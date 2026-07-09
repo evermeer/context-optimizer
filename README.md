@@ -28,6 +28,10 @@ On the context that actually gets compacted, expect roughly **40–60% fewer tok
 
 When the conversation being compacted is small, the bookkeeping around compaction costs more than the compaction saves. You can rely on the automatic compacting mechanism instead of manually executing `/compact`.
 
+## Complementary to Caveman
+
+Context Optimizer is fully complementary to [caveman](https://github.com/JuliusBrussee/caveman) — the two attack different token surfaces and can be installed side by side without conflict. Caveman reduces **output** tokens (it instructs the model to respond in a terse style) and shrinks static surfaces like MCP tool descriptions and memory files, while Context Optimizer reduces **input** tokens by reranking, deduplicating, and compressing the conversation history whenever it gets compacted. Neither touches the other's territory, so combined they cover both directions: caveman keeps responses lean as they're generated, and Context Optimizer keeps what's already in the window small.
+
 ## Reviews:
 
 > Quality can even improve in practice. If the plugin prevents Claude from reading lots of irrelevant files, the compacted context may actually be more focused on the task. But that depends on the nature of your work and whether the filtered information was truly irrelevant.
