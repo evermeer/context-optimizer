@@ -22,6 +22,9 @@
 - **GPU or CPU** — uses CUDA when available, and falls back to lighter CPU models automatically.
 - **Fully automatic** — runs on every compaction, and optionally on every chat turn (OpenCode only). No (extra) need to execute `/compact` yourself.
 
+![Dedupe Rerank Compress](./animation.svg)
+
+
 Both platforms compress the session on compaction; OpenCode additionally optimizes each chat turn live (Claude Code has no hook for that — see [How it works per platform](#how-it-works-per-platform)).
 
 On the context that actually gets compacted, expect roughly **40–60% fewer tokens** (LLMLingua-2 at the default `0.5` rate, after rerank + dedup pruning). Whole-session savings depend on how much of the session is compactable — and the exact `% saved` is measured on every compaction and you can retrieve stats, so you never have to trust a headline number.

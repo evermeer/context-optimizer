@@ -1,0 +1,145 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240" width="240" height="240">
+<defs>
+  <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0%" stop-color="#1a1b26"/>
+    <stop offset="100%" stop-color="#16161e"/>
+  </linearGradient>
+</defs>
+<style>
+  rect { animation-duration: 17s; animation-iteration-count: infinite; animation-timing-function: ease-in-out; }
+  @keyframes b0 {
+    0% { y: 0px; x: 0px; height: 20px; width: 240px; opacity: 1; }
+    2.35% { y: -3px; height: 26px; }
+    7.65% { y: 47px; height: 26px; }
+    8.82% { y: 47px; height: 26px; }
+    11.76% { y: 0px; height: 20px; }
+    47.06% { y: 0px; }
+    64.71% { y: 120px; x: 0px; width: 240px; opacity: 1; }
+    76.47% { x: 120px; width: 0px; opacity: 0; }
+    100% { y: 120px; x: 120px; height: 20px; width: 0px; opacity: 0; }
+  }
+  #b0 { animation-name: b0; }
+  @keyframes b1 {
+    0% { y: 20px; x: 0px; height: 20px; width: 240px; opacity: 1; }
+    11.76% { y: 20px; height: 20px; }
+    14.12% { y: 17px; height: 26px; }
+    19.41% { y: 87px; height: 26px; }
+    20.59% { y: 87px; height: 26px; }
+    23.53% { y: 20px; height: 20px; }
+    47.06% { y: 20px; }
+    64.71% { y: 0px; }
+    76.47% { y: 0px; height: 20px; }
+    88.24% { y: 0px; height: 10px; }
+    100% { y: 0px; x: 0px; height: 10px; width: 240px; opacity: 1; }
+  }
+  #b1 { animation-name: b1; }
+  @keyframes b2 {
+    0% { y: 40px; x: 0px; height: 20px; width: 240px; opacity: 1; }
+    47.06% { y: 40px; }
+    64.71% { y: 140px; x: 0px; width: 240px; opacity: 1; }
+    76.47% { x: 120px; width: 0px; opacity: 0; }
+    100% { y: 140px; x: 120px; height: 20px; width: 0px; opacity: 0; }
+  }
+  #b2 { animation-name: b2; }
+  @keyframes b3 {
+    0% { y: 60px; x: 0px; height: 20px; width: 240px; opacity: 1; }
+    23.53% { y: 60px; height: 20px; }
+    25.88% { y: 57px; height: 26px; }
+    31.18% { y: 127px; height: 26px; }
+    32.35% { y: 127px; height: 26px; }
+    35.29% { y: 60px; height: 20px; }
+    47.06% { y: 60px; }
+    64.71% { y: 80px; x: 0px; width: 240px; opacity: 1; }
+    76.47% { x: 120px; width: 0px; opacity: 0; }
+    100% { y: 80px; x: 120px; height: 20px; width: 0px; opacity: 0; }
+  }
+  #b3 { animation-name: b3; }
+  @keyframes b4 {
+    0% { y: 80px; x: 0px; height: 20px; width: 240px; opacity: 1; }
+    47.06% { y: 80px; }
+    64.71% { y: 40px; }
+    76.47% { y: 40px; height: 20px; }
+    88.24% { y: 20px; height: 10px; }
+    100% { y: 20px; x: 0px; height: 10px; width: 240px; opacity: 1; }
+  }
+  #b4 { animation-name: b4; }
+  @keyframes b5 {
+    0% { y: 100px; x: 0px; height: 20px; width: 240px; opacity: 1; }
+    2.35% { y: 97px; height: 26px; }
+    7.65% { y: 47px; height: 26px; opacity: 1; }
+    10% { opacity: 0; }
+    100% { y: 47px; x: 0px; height: 26px; width: 240px; opacity: 0; }
+  }
+  #b5 { animation-name: b5; }
+  @keyframes b6 {
+    0% { y: 120px; x: 0px; height: 20px; width: 240px; opacity: 1; }
+    47.06% { y: 120px; }
+    64.71% { y: 20px; }
+    76.47% { y: 20px; height: 20px; }
+    88.24% { y: 10px; height: 10px; }
+    100% { y: 10px; x: 0px; height: 10px; width: 240px; opacity: 1; }
+  }
+  #b6 { animation-name: b6; }
+  @keyframes b7 {
+    0% { y: 140px; x: 0px; height: 20px; width: 240px; opacity: 1; }
+    35.29% { y: 140px; height: 20px; }
+    37.65% { y: 137px; height: 26px; }
+    42.94% { y: 177px; height: 26px; }
+    44.12% { y: 177px; height: 26px; }
+    47.06% { y: 140px; height: 20px; }
+    64.71% { y: 60px; }
+    76.47% { y: 60px; height: 20px; }
+    88.24% { y: 30px; height: 10px; }
+    100% { y: 30px; x: 0px; height: 10px; width: 240px; opacity: 1; }
+  }
+  #b7 { animation-name: b7; }
+  @keyframes b8 {
+    0% { y: 160px; x: 0px; height: 20px; width: 240px; opacity: 1; }
+    11.76% { y: 160px; height: 20px; }
+    14.12% { y: 157px; height: 26px; }
+    19.41% { y: 87px; height: 26px; opacity: 1; }
+    21.76% { opacity: 0; }
+    100% { y: 87px; x: 0px; height: 26px; width: 240px; opacity: 0; }
+  }
+  #b8 { animation-name: b8; }
+  @keyframes b9 {
+    0% { y: 180px; x: 0px; height: 20px; width: 240px; opacity: 1; }
+    47.06% { y: 180px; }
+    64.71% { y: 100px; x: 0px; width: 240px; opacity: 1; }
+    76.47% { x: 120px; width: 0px; opacity: 0; }
+    100% { y: 100px; x: 120px; height: 20px; width: 0px; opacity: 0; }
+  }
+  #b9 { animation-name: b9; }
+  @keyframes b10 {
+    0% { y: 200px; x: 0px; height: 20px; width: 240px; opacity: 1; }
+    23.53% { y: 200px; height: 20px; }
+    25.88% { y: 197px; height: 26px; }
+    31.18% { y: 127px; height: 26px; opacity: 1; }
+    33.53% { opacity: 0; }
+    100% { y: 127px; x: 0px; height: 26px; width: 240px; opacity: 0; }
+  }
+  #b10 { animation-name: b10; }
+  @keyframes b11 {
+    0% { y: 220px; x: 0px; height: 20px; width: 240px; opacity: 1; }
+    35.29% { y: 220px; height: 20px; }
+    37.65% { y: 217px; height: 26px; }
+    42.94% { y: 177px; height: 26px; opacity: 1; }
+    45.29% { opacity: 0; }
+    100% { y: 177px; x: 0px; height: 26px; width: 240px; opacity: 0; }
+  }
+  #b11 { animation-name: b11; }
+</style>
+<rect width="240" height="240" fill="url(#bg)"/>
+  <rect id="b0" x="0" y="0" width="240" height="20" fill="#7aa2f7"/>
+  <rect id="b1" x="0" y="20" width="240" height="20" fill="#7dcfff"/>
+  <rect id="b2" x="0" y="40" width="240" height="20" fill="#f7768e"/>
+  <rect id="b3" x="0" y="60" width="240" height="20" fill="#9ece6a"/>
+  <rect id="b4" x="0" y="80" width="240" height="20" fill="#e0af68"/>
+  <rect id="b5" x="0" y="100" width="240" height="20" fill="#7aa2f7"/>
+  <rect id="b6" x="0" y="120" width="240" height="20" fill="#73daca"/>
+  <rect id="b7" x="0" y="140" width="240" height="20" fill="#ff9e64"/>
+  <rect id="b8" x="0" y="160" width="240" height="20" fill="#7dcfff"/>
+  <rect id="b9" x="0" y="180" width="240" height="20" fill="#bb9af7"/>
+  <rect id="b10" x="0" y="200" width="240" height="20" fill="#9ece6a"/>
+  <rect id="b11" x="0" y="220" width="240" height="20" fill="#ff9e64"/>
+</svg>
