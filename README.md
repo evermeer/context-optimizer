@@ -28,6 +28,15 @@ On the context that actually gets compacted, expect roughly **40–60% fewer tok
 
 When the conversation being compacted is small, the bookkeeping around compaction costs more than the compaction saves. You can rely on the automatic compacting mechanism instead of manually executing `/compact`.
 
+> [!TIP]
+> If you want more information about how to manage your coding agent's context, you can check out
+> [Coding Agent Orchestration](https://github.com/evermeer/CodingAgentOrchestration)
+> It will describe that you could add to your context so that your agent will have the right awnser faster using plugins like [Graphify](https://github.com/safishamsi/graphify) and [Mempalace](https://github.com/MemPalace/mempalace),
+> Stop adding irrelevant information to the context and keep your context clean with [COO](https://github.com/egorfedorov/claude-context-optimizer), 
+> Dedupe, Rerank and Compress the context before sending it to the LLM with [context-optimizer](https://github.com/evermeer/context-optimizer) (this plugin)
+> and ask your agent to resond with a compact response with [Caveman](https://github.com/JuliusBrussee/caveman)
+
+
 ## Reviews:
 
 > Quality can even improve in practice. If the plugin prevents Claude from reading lots of irrelevant files, the compacted context may actually be more focused on the task. But that depends on the nature of your work and whether the filtered information was truly irrelevant.
