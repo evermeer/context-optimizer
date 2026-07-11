@@ -35,7 +35,7 @@ When the conversation being compacted is small, the bookkeeping around compactio
 > If you want more information about how to manage your coding agent's context, you can check out
 > [Coding Agent Orchestration](https://github.com/evermeer/CodingAgentOrchestration)
 > It will describe that you could add to your context so that your agent will have the right awnser faster using plugins like [Graphify](https://github.com/safishamsi/graphify) and [Mempalace](https://github.com/MemPalace/mempalace),
-> Stop adding irrelevant information to the context and keep your context clean with [COO](https://github.com/egorfedorov/claude-context-optimizer), 
+> Stop adding irrelevant information to the context and keep your context clean with [COO](https://github.com/egorfedorov/claude-context-optimizer) or [context-mode](https://github.com/mksglu/context-mode), 
 > Dedupe, Rerank and Compress the context before sending it to the LLM with [context-optimizer](https://github.com/evermeer/context-optimizer) (this plugin)
 > and ask your agent to resond with a compact response with [Caveman](https://github.com/JuliusBrussee/caveman)
 
