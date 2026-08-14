@@ -9,10 +9,6 @@
 
 **Keep your coding agent's context small.** When a session gets compacted, Context Optimizer reranks the relevant parts, drops duplicates, and compresses the rest with a local ML pipeline ([LLMLingua-2](https://github.com/microsoft/LLMLingua) + [Sentence Transformers](https://github.com/huggingface/sentence-transformers)) — so more of the window stays useful and fewer tokens get billed. Everything runs on your machine.
 
-> [!WARNING]
-> This plugin is still experimental. (It works on my machine)
-> I'm investigating what options there are for context deduplication (removes repeated info), reranking (removes irrelevant context) and compression. 
-
 ## Highlights
 
 - **Local** — all ML runs on your machine.
@@ -27,15 +23,17 @@
 
 Both platforms compress the session on compaction; OpenCode additionally optimizes each chat turn live (Claude Code has no hook for that — see [How it works per platform](#how-it-works-per-platform)).
 
+This plugin can help when you have long running sessions. If you often start short lived session then this plugin will not have much impact. 
+
 On the context that actually gets compacted, expect roughly **40–60% fewer tokens** (LLMLingua-2 at the default `0.5` rate, after rerank + dedup pruning). Whole-session savings depend on how much of the session is compactable — and the exact `% saved` is measured on every compaction and you can retrieve stats, so you never have to trust a headline number.
 
-When the conversation being compacted is small, the bookkeeping around compaction costs more than the compaction saves. You can rely on the automatic compacting mechanism instead of manually executing `/compact`.
+When the conversation being compacted is small, the bookkeeping around compaction costs more than the compaction saves. Only manually run a `/compact` after you have send multiple messages and want a fresh context.
 
 > [!TIP]
 > If you want more information about how to manage your coding agent's context, you can check out
 > [Coding Agent Orchestration](https://github.com/evermeer/CodingAgentOrchestration)
 > It will describe that you could add to your context so that your agent will have the right awnser faster using plugins like [Graphify](https://github.com/safishamsi/graphify) and [Mempalace](https://github.com/MemPalace/mempalace),
-> Stop adding irrelevant information to the context and keep your context clean with [COO](https://github.com/egorfedorov/claude-context-optimizer) or [context-mode](https://github.com/mksglu/context-mode), 
+> Stop adding irrelevant information to the context and keep your context clean with [context-mode](https://github.com/mksglu/context-mode), 
 > Dedupe, Rerank and Compress the context before sending it to the LLM with [context-optimizer](https://github.com/evermeer/context-optimizer) (this plugin)
 > and ask your agent to resond with a compact response with [Caveman](https://github.com/JuliusBrussee/caveman)
 
