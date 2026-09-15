@@ -4,10 +4,10 @@
 [![license](https://img.shields.io/npm/l/@evermeer/context-optimizer)](https://github.com/evermeer/context-optimizer/blob/main/LICENSE)
 [![node](https://img.shields.io/node/v/@evermeer/context-optimizer?logo=node.js&logoColor=white)](https://nodejs.org)
 [![python](https://img.shields.io/badge/python-3.9%2B-blue?logo=python&logoColor=white)](https://www.python.org)
-[![status](https://img.shields.io/badge/status-experimental-orange)](#)
+[![status](https://img.shields.io/badge/status-public_test-orange)](#)
 [![platforms](https://img.shields.io/badge/for-OpenCode%20%26%20Claude%20Code-8A2BE2)](#)
 
-**Keep your coding agent's context small.** When a session gets compacted, Context Optimizer reranks the relevant parts, drops duplicates, and compresses the rest with a local ML pipeline ([LLMLingua-2](https://github.com/microsoft/LLMLingua) + [Sentence Transformers](https://github.com/huggingface/sentence-transformers)) — so more of the window stays useful and fewer tokens get billed. Everything runs on your machine.
+**Keep your coding agent's context small.** When a session gets compacted, Context Optimizer reranks the relevant parts, drops duplicates, and compresses the rest with a local ML pipeline ([LLMLingua-2](https://github.com/microsoft/LLMLingua) + [Sentence Transformers](https://github.com/huggingface/sentence-transformers)) — so more of the window stays useful and fewer tokens get billed. 
 
 ## Highlights
 
