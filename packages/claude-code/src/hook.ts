@@ -194,7 +194,7 @@ async function precompact(input: HookInput): Promise<void> {
     sessionID,
   })
 
-  writeLog(`[context-optimizer] claude ${formatOutcomeMessage(result)}`)
+  writeLog(`claude precompact: ${formatOutcomeMessage(result)}`)
 
   // Manual /compact: the plugin output replaces Claude's summary. Block the
   // native compaction and hand off via /clear; exit 2 + stderr is shown to the
@@ -204,7 +204,7 @@ async function precompact(input: HookInput): Promise<void> {
     fs.writeFileSync(clearFile(input.transcript_path), result.optimizedContext, "utf8")
     recordOptimizationStats(sessionID, result, "claude-code", "manual")
     process.stderr.write(
-      `[context-optimizer] ${formatOutcomeMessage(result)}\n` +
+      `${formatOutcomeMessage(result)}\n` +
         "Optimized context saved; Claude's own compaction was skipped. Run /clear to continue with the optimized context.",
     )
     process.exitCode = 2

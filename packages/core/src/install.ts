@@ -110,9 +110,12 @@ function upsertHook(entries: HookEntry[], entry: HookEntry): HookEntry[] {
 }
 
 export function installClaudeAdapter(): void {
-  const hookScript = path.join(dataDir(), "claude-hook.js")
+  // .mjs: the data dir has no package.json, so a .js copy makes Node print a
+  // MODULE_TYPELESS_PACKAGE_JSON warning that Claude Code shows the user.
+  const hookScript = path.join(dataDir(), "claude-hook.mjs")
   fs.mkdirSync(dataDir(), { recursive: true })
   fs.copyFileSync(path.join(packageRoot(), "dist", "claude-hook.js"), hookScript)
+  fs.rmSync(path.join(dataDir(), "claude-hook.js"), { force: true })
 
   const settingsPath = path.join(claudeConfigDir(), "settings.json")
   let settings: Record<string, any> = {}
