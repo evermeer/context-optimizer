@@ -95,7 +95,7 @@ Check what would be detected: `npx @evermeer/context-optimizer detect`
 
 ### OpenCode
 
-The installer copies a self-contained plugin to `~/.config/opencode/plugins/context-optimizer.js`. OpenCode loads it automatically. During `experimental.session.compacting` the plugin collects the compaction documents, calls the Python bridge, and replaces the context with an `## Optimized Context` block plus a size summary (initial size, final size, % saved).
+The installer copies a self-contained plugin to `~/.config/opencode/plugins/context-optimizer.js`. OpenCode loads it automatically. On compaction, the plugin replaces the conversation that OpenCode sends to its summarizer LLM with the `## Optimized Context` from the Python bridge. OpenCode's `experimental.session.compacting` hook doesn't receive the messages, so the plugin only flags the session there. The rewrite happens in the `experimental.chat.messages.transform` call that OpenCode makes right after, on the exact messages it serializes for the summarizer. The summarizer then works on the optimized context instead of the full conversation, which saves tokens on the compaction call itself. It fails open: if the optimizer fails or the context is below `min_chars`, the summarizer gets the original conversation. Unlike Claude Code's manual `/compact`, an LLM summary is still made, because OpenCode has no hook to skip it.
 In addition, `experimental.chat.messages.transform` runs live optimization on every chat turn (no Python round-trip, pure TS):
 
 - **deduplication** — tool calls with an identical tool name + parameters keep only the newest output; older duplicates are replaced with a short marker.

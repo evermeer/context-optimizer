@@ -1,6 +1,8 @@
 /**
- * OpenCode adapter. Hooks into `experimental.session.compacting` and exposes
- * the /context-optimizer slash commands. All business logic lives in core.
+ * OpenCode adapter. Replaces the compaction summarizer's input with the
+ * optimized context (see compactingSessions), runs the live per-turn
+ * strategies, and exposes the /context-optimizer slash commands. All business
+ * logic lives in core.
  */
 import { runOptimizer } from "../../core/src/bridge.js"
 import {
@@ -18,7 +20,6 @@ import {
 import { writeDiagnostic, writeLog } from "../../core/src/log.js"
 import { logPath, pythonCliPath } from "../../core/src/paths.js"
 import {
-  applyOptimizedContext,
   buildPayload,
   formatOutcomeMessage,
   summarizeContext,
@@ -69,6 +70,30 @@ function normalizeCommandName(commandName: unknown): string {
   return String(commandName || "").trim().replace(/^\//, "")
 }
 
+/**
+ * Flattens OpenCode session messages into optimizer docs, one per message,
+ * mirroring how OpenCode serializes them for its compaction summarizer.
+ */
+export function messagesToDocs(messages: any[]): string[] {
+  const docs: string[] = []
+  for (const message of messages) {
+    const role = message?.info?.role === "user" ? "User" : "Assistant"
+    const lines: string[] = []
+    for (const part of Array.isArray(message?.parts) ? message.parts : []) {
+      if ((part?.type === "text" || part?.type === "reasoning") && part.text && !part.ignored) {
+        lines.push(`[${role}]: ${part.text}`)
+      } else if (part?.type === "tool" && part.state) {
+        lines.push(`[tool ${part.tool}] ${JSON.stringify(part.state.input ?? {})}`)
+        if (part.state.status === "completed" && part.state.output) lines.push(String(part.state.output))
+        if (part.state.status === "error" && part.state.error) lines.push(`[error] ${part.state.error}`)
+      }
+    }
+    const doc = lines.join("\n").trim()
+    if (doc) docs.push(doc)
+  }
+  return docs
+}
+
 function resolveToastClient(dependencies: any = {}, input: any = {}, output: any = {}) {
   const client = dependencies.client || input?.client || output?.client || null
   const toastFn = client?.tui?.showToast
@@ -93,15 +118,24 @@ export const ContextOptimizerPlugin = async (dependencies: any = {}) => {
     const run = dependencies.runOptimizer || runOptimizer
     writeLog(`[context-optimizer] plugin loaded (log=${logPath()}, bridge=${cliPath})`)
 
-    const optimizeContext = async (input: any, output: any) => {
-      const toast = resolveToastClient(dependencies, input, output)
-      const payload = buildPayload(input, output)
+    // OpenCode's `experimental.session.compacting` hook receives no messages
+    // (its `context` starts empty). Right after it, compaction runs
+    // `experimental.chat.messages.transform` on the exact messages it
+    // serializes for the summarizer. So: flag the session in the first hook and
+    // replace those messages with the optimized context in the second.
+    // ponytail: 10s window guards against a flag that was never consumed
+    // leaking into a later chat turn; the two hooks fire back to back.
+    const compactingSessions = new Map<string, number>()
+    const COMPACTING_FLAG_TTL_MS = 10_000
+
+    const optimizeCompaction = async (sessionID: string, messages: any[]) => {
+      const toast = resolveToastClient(dependencies)
+      const lastUser = [...messages].reverse().find((message) => message?.info?.role === "user")
+      const payload = buildPayload({ model: lastUser?.info?.model?.modelID }, { context: messagesToDocs(messages) })
       const minChars = resolveEffectiveConfig().min_chars
 
-      if (!payload.docs.length) {
-        writeLog(
-          `[context-optimizer] optimization skipped: no compaction documents were provided (size=${payload.size} chars, docs=${payload.docs.length}).`,
-        )
+      if (!lastUser || !payload.docs.length) {
+        writeLog(`[context-optimizer] optimization skipped: no compaction messages (docs=${payload.docs.length}).`)
         return
       }
 
@@ -121,19 +155,19 @@ export const ContextOptimizerPlugin = async (dependencies: any = {}) => {
           ...payload,
           options: { min_input_size: minChars, ...payload.options },
         },
-        sessionID: input?.sessionID,
+        sessionID,
         cliPath,
       })
 
       writeLog(formatOutcomeMessage(result))
+      // Fail open: without optimized content the summarizer gets the original messages.
       if (result?.ok && result?.optimizedContext) {
-        recordOptimizationStats(input?.sessionID, result, "opencode")
-      }
-      // applyOptimizedContext is fail-open: it only rewrites output.context
-      // when the optimizer returned real optimized content.
-      applyOptimizedContext(output, result)
-
-      if (result?.ok && result?.optimizedContext) {
+        recordOptimizationStats(sessionID, result, "opencode")
+        // In place: OpenCode keeps its own reference to this array.
+        messages.splice(0, messages.length, {
+          info: lastUser.info,
+          parts: [{ type: "text", text: `## Optimized Context\n\n${result.optimizedContext}` }],
+        })
         await showToast(toast, `[context-optimizer] optimized ${payload.docs.length} docs.`, "default")
       } else if (!result?.ok) {
         await showToast(
@@ -267,8 +301,9 @@ export const ContextOptimizerPlugin = async (dependencies: any = {}) => {
         },
       },
       "command.execute.before": command,
-      "experimental.session.compacting": optimizeContext,
-      "experimental.response.cleanup": optimizeContext,
+      "experimental.session.compacting": async (input: any) => {
+        if (input?.sessionID) compactingSessions.set(input.sessionID, Date.now())
+      },
       "experimental.chat.messages.transform": async (_input: any, output: any) => {
         try {
           const { deduped, purgedErrors } = applyOptimizationStrategies(output?.messages)
@@ -279,6 +314,19 @@ export const ContextOptimizerPlugin = async (dependencies: any = {}) => {
           }
         } catch (error) {
           writeDiagnostic(`[context-optimizer] live optimization failed: ${error}`)
+        }
+
+        const messages = output?.messages
+        const sessionID = Array.isArray(messages) ? messages[0]?.info?.sessionID : undefined
+        const flaggedAt = sessionID ? compactingSessions.get(sessionID) : undefined
+        if (!sessionID || flaggedAt === undefined) return
+        compactingSessions.delete(sessionID)
+        if (Date.now() - flaggedAt > COMPACTING_FLAG_TTL_MS) return
+
+        try {
+          await optimizeCompaction(sessionID, messages)
+        } catch (error) {
+          writeLog(`[context-optimizer] compaction optimization failed: ${error}`)
         }
       },
     }

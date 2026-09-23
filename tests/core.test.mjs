@@ -48,16 +48,6 @@ test("normalizePythonResult maps ok and error payloads", () => {
   assert.equal(err.status, "failed")
 })
 
-test("applyOptimizedContext fails open without optimized content", () => {
-  const output = { context: ["original"] }
-  core.applyOptimizedContext(output, { ok: false })
-  assert.deepEqual(output.context, ["original"])
-
-  core.applyOptimizedContext(output, { ok: true, optimizedContext: "tight", initialSize: 100, finalSize: 5 })
-  assert.equal(output.context.length, 2)
-  assert.match(output.context[1], /## Optimized Context\n\ntight/)
-})
-
 test("config round-trips through the stored config file", () => {
   core.writeStoredConfig({ min_chars: 123 })
   assert.equal(core.resolveEffectiveConfig().min_chars, 123)
@@ -164,30 +154,63 @@ test("opencode plugin exports the loader shape", async () => {
   assert.ok(hooks.command["context-optimizer"])
 })
 
-test("opencode compaction hook rewrites context via injected runner", async () => {
+function sessionMessages(sessionID, text) {
+  return [
+    { info: { role: "user", sessionID, model: { modelID: "m" } }, parts: [{ type: "text", text }] },
+    { info: { role: "assistant", sessionID }, parts: [{ type: "text", text: "ok" }] },
+  ]
+}
+
+// OpenCode fires `session.compacting` (no messages), then `messages.transform`
+// on the exact messages it serializes for the summarizer.
+test("opencode compaction replaces the summarizer's messages in place", async () => {
+  let docs
   const hooks = await opencode.ContextOptimizerPlugin({
-    runOptimizer: async () => ({ ok: true, optimizedContext: "compressed", initialSize: 5000, finalSize: 10 }),
-  })
-
-  const output = { context: ["x".repeat(5000)] }
-  await hooks["experimental.session.compacting"]({ sessionID: "s" }, output)
-
-  assert.equal(output.context.length, 2)
-  assert.match(output.context[1], /compressed/)
-})
-
-test("opencode compaction hook skips small contexts", async () => {
-  let called = false
-  const hooks = await opencode.ContextOptimizerPlugin({
-    runOptimizer: async () => {
-      called = true
-      return { ok: true }
+    runOptimizer: async ({ payload }) => {
+      docs = payload.docs
+      return { ok: true, optimizedContext: "compressed", initialSize: 5000, finalSize: 10 }
     },
   })
 
-  const output = { context: ["tiny"] }
-  await hooks["experimental.session.compacting"]({}, output)
+  const messages = sessionMessages("s", "x".repeat(5000))
+  await hooks["experimental.session.compacting"]({ sessionID: "s" }, { context: [], prompt: undefined })
+  await hooks["experimental.chat.messages.transform"]({}, { messages })
 
-  assert.equal(called, false)
-  assert.deepEqual(output.context, ["tiny"])
+  assert.match(docs[0], /^\[User\]: x+/)
+  assert.equal(messages.length, 1)
+  assert.equal(messages[0].info.role, "user")
+  assert.equal(messages[0].parts[0].text, "## Optimized Context\n\ncompressed")
+})
+
+test("opencode leaves chat turns and small or failed compactions untouched", async () => {
+  let calls = 0
+  let ok = true
+  const hooks = await opencode.ContextOptimizerPlugin({
+    runOptimizer: async () => {
+      calls += 1
+      return ok ? { ok: true, optimizedContext: "compressed", initialSize: 5000, finalSize: 10 } : { ok: false }
+    },
+  })
+
+  // A chat turn without a preceding compacting hook is never optimized.
+  const turn = sessionMessages("s", "x".repeat(5000))
+  await hooks["experimental.chat.messages.transform"]({}, { messages: turn })
+  assert.equal(calls, 0)
+  assert.equal(turn.length, 2)
+
+  // Below min_chars: no optimizer call, and the flag is consumed.
+  const small = sessionMessages("s", "tiny")
+  await hooks["experimental.session.compacting"]({ sessionID: "s" }, {})
+  await hooks["experimental.chat.messages.transform"]({}, { messages: small })
+  await hooks["experimental.chat.messages.transform"]({}, { messages: turn })
+  assert.equal(calls, 0)
+  assert.equal(small.length, 2)
+
+  // Optimizer failure: fail open, original messages go to the summarizer.
+  ok = false
+  const failed = sessionMessages("s", "x".repeat(5000))
+  await hooks["experimental.session.compacting"]({ sessionID: "s" }, {})
+  await hooks["experimental.chat.messages.transform"]({}, { messages: failed })
+  assert.equal(calls, 1)
+  assert.equal(failed.length, 2)
 })

@@ -107,13 +107,3 @@ export function formatOutcomeMessage(result: OptimizerResult = { ok: false }): s
 
   return `[context-optimizer] optimization completed without a measurable savings summary.`
 }
-
-/**
- * Fail open: only replace the original context when the optimizer produced a
- * real optimized replacement. Failures and no-op results leave context intact.
- */
-export function applyOptimizedContext(output: Record<string, any> | undefined, result: OptimizerResult): void {
-  if (!output || !result?.optimizedContext) return
-
-  output.context = [formatOutcomeMessage(result), `## Optimized Context\n\n${result.optimizedContext}`]
-}
