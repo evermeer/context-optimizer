@@ -182,6 +182,31 @@ test("opencode compaction replaces the summarizer's messages in place", async ()
   assert.equal(messages[0].parts[0].text, "## Optimized Context\n\ncompressed")
 })
 
+test("opencode context/compact commands read the session via the SDK client and reply in place", async () => {
+  let docs
+  const client = {
+    session: { messages: async ({ path }) => ({ data: path.id === "s" ? sessionMessages("s", "x".repeat(5000)) : [] }) },
+  }
+  const hooks = await opencode.ContextOptimizerPlugin({
+    client,
+    runOptimizer: async ({ payload }) => {
+      docs = payload.docs
+      return { ok: true, optimizedContext: "compressed", initialSize: 5000, finalSize: 10 }
+    },
+  })
+
+  // OpenCode prompts with its own `parts` array, so the reply must mutate it.
+  const parts = [{ type: "text", text: "template" }]
+  await hooks["command.execute.before"]({ command: "context-optimizer context", sessionID: "s", arguments: "" }, { parts })
+  assert.equal(parts.length, 1)
+  assert.match(parts[0].text, /"docs": 2/)
+  assert.match(parts[0].text, /"model": "m"/)
+
+  await hooks["command.execute.before"]({ command: "context-optimizer compact", sessionID: "s", arguments: "" }, { parts })
+  assert.match(docs[0], /^\[User\]: x+/)
+  assert.match(parts[0].text, /compressed/)
+})
+
 test("opencode leaves chat turns and small or failed compactions untouched", async () => {
   let calls = 0
   let ok = true

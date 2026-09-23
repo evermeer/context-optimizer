@@ -190,8 +190,18 @@ export const ContextOptimizerPlugin = async (dependencies: any = {}) => {
       const configArgs = configInput || args
 
       const reply = (text: string) => {
-        output.parts = [{ type: "text", text }]
+        // In place: OpenCode sends its own `parts` array, not output.parts.
+        if (!Array.isArray(output.parts)) output.parts = []
+        output.parts.splice(0, output.parts.length, { type: "text", text })
         output.noReply = true
+      }
+
+      // The command hook gets no messages; read the real session through the SDK client.
+      const sessionPayload = async () => {
+        const response = await dependencies.client?.session?.messages?.({ path: { id: sessionID } })
+        const messages = Array.isArray(response?.data) ? response.data : []
+        const lastUser = [...messages].reverse().find((message: any) => message?.info?.role === "user")
+        return buildPayload({ model: lastUser?.info?.model?.modelID }, { context: messagesToDocs(messages) })
       }
 
       if (!commandName || commandName === "context-optimizer") {
@@ -200,7 +210,7 @@ export const ContextOptimizerPlugin = async (dependencies: any = {}) => {
       }
 
       if (commandArgs === "context") {
-        reply(buildCommandOutput("current session context", formatJsonBlock(summarizeContext(buildPayload(input, output)))))
+        reply(buildCommandOutput("current session context", formatJsonBlock(summarizeContext(await sessionPayload()))))
         return
       }
 
@@ -210,7 +220,7 @@ export const ContextOptimizerPlugin = async (dependencies: any = {}) => {
       }
 
       if (commandArgs === "compact") {
-        const payload = buildPayload(input, output)
+        const payload = await sessionPayload()
         const result = await run({
           payload: {
             ...payload,

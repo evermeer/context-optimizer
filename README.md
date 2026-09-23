@@ -108,7 +108,7 @@ Slash commands:
 | `/context-optimizer` | Show help |
 | `/context-optimizer context` | Show the current session context breakdown |
 | `/context-optimizer stats` | Show cumulative pruning/compaction stats |
-| `/context-optimizer compact` | Run one compaction pass immediately. Tip: run /compact instead so that it runs native and does not need an LLM to interpret the command. |
+| `/context-optimizer compact` | Run the optimizer on the current session and show the result, without changing the session. Tip: run /compact to actually compact; it runs natively and doesn't need an LLM to interpret the command. |
 | `/context-optimizer config [get\|set\|reset]` | Show or update safe settings (`timeout_ms`, `min_chars`, `model_limits`) |
 
 ### Claude Code
