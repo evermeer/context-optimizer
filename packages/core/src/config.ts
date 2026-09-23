@@ -6,10 +6,10 @@ import { configPath, resultsCsvPath } from "./paths.js"
 
 export const DEFAULT_TIMEOUT_MS = 300000
 export const DEFAULT_MIN_COMPACTION_CHARS = 2000
-export const DEFAULT_COMPRESSION_RATE = 0.5
-export const DEFAULT_MAX_CHUNKS = 6
+export const DEFAULT_COMPRESSION_RATE = 0.6
+export const DEFAULT_MAX_CHUNKS = 12
 export const DEFAULT_DEDUPE_THRESHOLD = 0.9
-export const DEFAULT_PRUNE_BUDGET_CHARS = 4000
+export const DEFAULT_PRUNE_BUDGET_CHARS = 8000
 export const DEFAULT_AUTO_COMPRESSION_CHARS = 4000
 export const DEFAULT_RERANKER_MODEL = "BAAI/bge-reranker-large"
 export const DEFAULT_EMBED_MODEL = "all-MiniLM-L6-v2"

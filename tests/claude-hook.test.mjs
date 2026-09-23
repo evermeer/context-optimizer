@@ -31,6 +31,28 @@ test("sessionstart injects and consumes the stored optimized context", () => {
   assert.equal(fs.existsSync(path.join(sessionDir, "abc.md")), false, "session file is consumed")
 })
 
+test("sessionstart after /clear injects the project hand-off, dropping stale ones", () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "ctxopt-claude-"))
+  const sessionDir = path.join(home, "claude-sessions")
+  fs.mkdirSync(sessionDir, { recursive: true })
+  const handoff = path.join(sessionDir, "clear-my-project.md")
+  // /clear gets a new session ID; only the project dir links it to the blocked /compact.
+  const input = { session_id: "new-id", source: "clear", transcript_path: path.join(home, "my-project", "new-id.jsonl") }
+
+  fs.writeFileSync(handoff, "the optimized bits", "utf8")
+  const fresh = runHook("sessionstart", input, home)
+  assert.equal(fresh.status, 0)
+  assert.match(JSON.parse(fresh.stdout).hookSpecificOutput.additionalContext, /the optimized bits/)
+  assert.equal(fs.existsSync(handoff), false, "hand-off is consumed")
+
+  fs.writeFileSync(handoff, "old bits", "utf8")
+  const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000)
+  fs.utimesSync(handoff, twoHoursAgo, twoHoursAgo)
+  const stale = runHook("sessionstart", input, home)
+  assert.equal(stale.stdout, "")
+  assert.equal(fs.existsSync(handoff), false, "stale hand-off is removed")
+})
+
 test("sessionstart stays silent for non-compact sources", () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), "ctxopt-claude-"))
   const result = runHook("sessionstart", { session_id: "abc", source: "startup" }, home)

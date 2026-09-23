@@ -21,10 +21,10 @@ class ContextOptimizer:
         reranker_model="BAAI/bge-reranker-large",
         embed_model="all-MiniLM-L6-v2",
         compressor_model=None,
-        compression_rate=0.5,
-        max_chunks=6,
+        compression_rate=0.6,
+        max_chunks=12,
         dedupe_threshold=0.9,
-        total_prune_budget_chars=4000,
+        total_prune_budget_chars=8000,
         error_prefixes=None,
     ):
         device = "cuda" if torch is not None and torch.cuda.is_available() else "cpu"

@@ -25,7 +25,7 @@ Both platforms compress the session on compaction; OpenCode additionally optimiz
 
 This plugin can help when you have long running sessions. If you often start short lived session then this plugin will not have much impact. 
 
-On the context that actually gets compacted, expect roughly **40–60% fewer tokens** (LLMLingua-2 at the default `0.5` rate, after rerank + dedup pruning). Whole-session savings depend on how much of the session is compactable — and the exact `% saved` is measured on every compaction and you can retrieve stats, so you never have to trust a headline number.
+On the context that actually gets compacted, LLMLingua-2 at the default `0.6` rate keeps about 60% of the tokens it sees, on top of what rerank + dedup pruning already dropped. Whole-session savings depend on how much of the session is compactable — and the exact `% saved` is measured on every compaction and you can retrieve stats, so you never have to trust a headline number.
 
 When the conversation being compacted is small, the bookkeeping around compaction costs more than the compaction saves. Only manually run a `/compact` after you have send multiple messages and want a fresh context.
 
@@ -115,10 +115,15 @@ Slash commands:
 
 Claude Code hooks cannot rewrite the compaction context directly, so the adapter uses a two-phase hand-off, registered in `~/.claude/settings.json`:
 
-1. **PreCompact hook** — before compaction runs, the transcript context is optimized via the Python bridge and the result is stored per session under `~/.context-optimizer/claude-sessions/`.
-2. **SessionStart hook** (matcher `compact`) — right after compaction, the stored optimized context is injected back into the fresh session as additional context and the hand-off file is removed.
+1. **PreCompact hook** — before compaction runs, the transcript context is optimized via the Python bridge and the result is stored under `~/.context-optimizer/claude-sessions/`.
+2. **SessionStart hook** (matcher `compact|clear`) — the stored optimized context is injected into the fresh session as additional context and the hand-off file is removed.
 
-Both hooks fail open: on any error Claude Code proceeds untouched.
+What happens next depends on how compaction was triggered:
+
+- **Manual `/compact` — plugin-only compact.** The hook blocks Claude's own compaction and tells you to run `/clear`. After `/clear`, the new session starts with only the optimized context, and Claude's LLM summary is skipped entirely. You have to type `/clear` yourself (hooks cannot run slash commands). A saved hand-off expires after 1 hour, so it never leaks into an unrelated `/clear` later.
+- **Auto-compact.** Claude's own compaction runs as usual on the full transcript; right after, the optimized context is added next to Claude's summary. It is not blocked, because blocking an auto-compact that fires at the context limit would fail the current request.
+
+Both hooks fail open: if the optimizer fails or the context is below `min_chars`, nothing is blocked and Claude Code compacts as usual.
 
 Claude Code has no hook that can rewrite the live conversation, so the per-turn optimization strategies from the OpenCode plugin run here at the PreCompact rewrite point instead, while parsing the transcript:
 
@@ -129,7 +134,7 @@ Surviving tool outputs (capped per result) are fed to the optimizer alongside th
 
 #### Native `/compact` vs. `/compact` with context-optimizer installed
 
-Claude Code's built-in `/compact` is a single LLM call: it summarizes the whole transcript into shorter prose, with no visibility into what got cut or how much was saved. With context-optimizer installed, the same `/compact` command first runs through the PreCompact hook above — rerank, dedupe, and LLMLingua-2 compression — before Claude's own summarization ever sees the transcript, so duplicate tool calls and stale errors are gone and the remaining content is already token-lean. Expect the compactable portion to shrink by roughly **40–60% additional tokens** (default `compression_rate` of `0.5`), and the exact `% saved` is recorded on every compaction and available on demand via `/context-optimizer:stats` instead of being a guess. Quality-wise it's lossy compression, not paraphrasing — LLMLingua drops low-information tokens and favors keeping distinctive facts, names, and numbers over prose connectors; if a compaction ever trims something you needed, raise `compression_rate` or `max_chunks` (see [Configuration](#configuration)).
+Claude Code's built-in `/compact` is a single LLM call: it summarizes the whole transcript into shorter prose, with no visibility into what got cut or how much was saved. Claude Code hooks cannot change what that call receives, so context-optimizer replaces it for manual compaction instead: `/compact` runs rerank, dedupe, and LLMLingua-2 compression (default `compression_rate` of `0.6`) locally, blocks the LLM summary, and `/clear` continues with that result. No LLM call is spent on compaction. The exact `% saved` is recorded on every compaction and available on demand via `/context-optimizer:stats` instead of being a guess. Auto-compact still uses Claude's own summary, with the optimized context added alongside it. Quality-wise it's lossy compression, not paraphrasing — LLMLingua drops low-information tokens and favors keeping distinctive facts, names, and numbers over prose connectors; if a compaction ever trims something you needed, raise `compression_rate` or `max_chunks` (see [Configuration](#configuration)).
 
 Slash commands (installed as markdown commands in `~/.claude/commands/context-optimizer*`):
 
@@ -153,10 +158,10 @@ Environment variables win over `config.json`, which wins over defaults:
 | --- | --- | --- | --- |
 | `timeout_ms` | `CONTEXT_OPTIMIZER_TIMEOUT_MS` | `300000` | How long to wait for the Python bridge before failing open |
 | `min_chars` | `CONTEXT_OPTIMIZER_MIN_CHARS` | `2000` | Minimum context size before optimization runs |
-| `compression_rate` | `CONTEXT_OPTIMIZER_COMPRESSION_RATE` | `0.5` | Fraction of tokens LLMLingua keeps (0–1); higher keeps more detail |
-| `max_chunks` | `CONTEXT_OPTIMIZER_MAX_CHUNKS` | `6` | Max ranked chunks kept before compression (positive integer) |
+| `compression_rate` | `CONTEXT_OPTIMIZER_COMPRESSION_RATE` | `0.6` | Fraction of tokens LLMLingua keeps (0–1); higher keeps more detail |
+| `max_chunks` | `CONTEXT_OPTIMIZER_MAX_CHUNKS` | `12` | Max ranked chunks kept before compression (positive integer) |
 | `dedupe_threshold` | `CONTEXT_OPTIMIZER_DEDUPE_THRESHOLD` | `0.9` | Cosine similarity (0–1) above which a chunk is treated as a duplicate |
-| `total_prune_budget_chars` | `CONTEXT_OPTIMIZER_PRUNE_BUDGET_CHARS` | `4000` | Char budget of ranked+deduped context kept before compression (positive integer) |
+| `total_prune_budget_chars` | `CONTEXT_OPTIMIZER_PRUNE_BUDGET_CHARS` | `8000` | Char budget of ranked+deduped context kept before compression (positive integer) |
 | `auto_compression_chars` | `CONTEXT_OPTIMIZER_AUTO_COMPRESSION_CHARS` | `4000` | Context size (chars) at which per-model `model_limits` overrides kick in |
 | `reranker_model` | `CONTEXT_OPTIMIZER_RERANKER_MODEL` | `BAAI/bge-reranker-large` | HuggingFace cross-encoder used to rank chunks by relevance |
 | `embed_model` | `CONTEXT_OPTIMIZER_EMBED_MODEL` | `all-MiniLM-L6-v2` | HuggingFace embedding model used for deduplication |

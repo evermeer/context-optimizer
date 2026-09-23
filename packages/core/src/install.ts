@@ -129,7 +129,7 @@ export function installClaudeAdapter(): void {
     hooks: [{ type: "command", command: nodeCommand("precompact") }],
   })
   hooks.SessionStart = upsertHook(Array.isArray(hooks.SessionStart) ? hooks.SessionStart : [], {
-    matcher: "compact",
+    matcher: "compact|clear",
     hooks: [{ type: "command", command: nodeCommand("sessionstart") }],
   })
 

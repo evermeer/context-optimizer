@@ -4,14 +4,17 @@
  *
  * Claude Code hooks cannot rewrite the compaction context directly, so this
  * adapter works in two phases:
- *  - "precompact":   runs on the PreCompact hook, optimizes the transcript
- *                    context via the Python bridge and stores the result per
- *                    session on disk.
- *  - "sessionstart": runs on the SessionStart hook (matcher "compact") and
- *                    injects the stored optimized context back into the fresh
+ *  - "precompact":   runs on the PreCompact hook and optimizes the transcript
+ *                    context via the Python bridge.
+ *                    - manual /compact: stores the result per project and
+ *                      blocks Claude's own compaction; the user runs /clear.
+ *                    - auto-compact: stores the result per session and lets
+ *                      Claude's compaction proceed.
+ *  - "sessionstart": runs on the SessionStart hook (matcher "compact|clear")
+ *                    and injects the stored optimized context into the fresh
  *                    session as additionalContext.
  *
- * Both phases fail open: on any error the hook exits 0 and Claude Code
+ * Both phases fail open: on any error the hook does not block and Claude Code
  * proceeds untouched.
  */
 import fs from "node:fs"
@@ -152,6 +155,17 @@ function sessionFile(sessionID: string): string {
   return path.join(claudeSessionDir(), `${sessionID.replace(/[^\w.-]/g, "_")}.md`)
 }
 
+// /clear starts a new session ID, so the manual hand-off is keyed by the
+// transcript's project directory, which both sessions share.
+function clearFile(transcriptPath: string): string {
+  const project = path.basename(path.dirname(transcriptPath))
+  return path.join(claudeSessionDir(), `clear-${project.replace(/[^\w.-]/g, "_")}.md`)
+}
+
+// ponytail: fixed window so a forgotten hand-off never leaks into an unrelated
+// /clear much later; make it configurable if someone needs longer.
+const CLEAR_HANDOFF_MAX_AGE_MS = 60 * 60 * 1000
+
 async function precompact(input: HookInput): Promise<void> {
   const sessionID = input.session_id || "unknown"
   if (!input.transcript_path || !fs.existsSync(input.transcript_path)) {
@@ -182,6 +196,21 @@ async function precompact(input: HookInput): Promise<void> {
 
   writeLog(`[context-optimizer] claude ${formatOutcomeMessage(result)}`)
 
+  // Manual /compact: the plugin output replaces Claude's summary. Block the
+  // native compaction and hand off via /clear; exit 2 + stderr is shown to the
+  // user. On failure we fall through and Claude compacts as usual.
+  if (input.trigger === "manual" && result.ok && result.optimizedContext) {
+    fs.mkdirSync(claudeSessionDir(), { recursive: true })
+    fs.writeFileSync(clearFile(input.transcript_path), result.optimizedContext, "utf8")
+    recordOptimizationStats(sessionID, result, "claude-code", "manual")
+    process.stderr.write(
+      `[context-optimizer] ${formatOutcomeMessage(result)}\n` +
+        "Optimized context saved; Claude's own compaction was skipped. Run /clear to continue with the optimized context.",
+    )
+    process.exitCode = 2
+    return
+  }
+
   if (result.ok && result.optimizedContext) {
     fs.mkdirSync(claudeSessionDir(), { recursive: true })
     // Only the restored content (no stats) travels through the hand-off file:
@@ -196,13 +225,20 @@ async function precompact(input: HookInput): Promise<void> {
 }
 
 function sessionstart(input: HookInput): void {
-  if (input.source !== "compact") return
+  let file: string
+  if (input.source === "compact") file = sessionFile(input.session_id || "unknown")
+  else if (input.source === "clear" && input.transcript_path) file = clearFile(input.transcript_path)
+  else return
 
-  const file = sessionFile(input.session_id || "unknown")
   if (!fs.existsSync(file)) return
 
+  const stale = Date.now() - fs.statSync(file).mtimeMs > CLEAR_HANDOFF_MAX_AGE_MS
   const optimized = fs.readFileSync(file, "utf8")
   fs.rmSync(file, { force: true })
+  if (input.source === "clear" && stale) {
+    writeLog("[context-optimizer] claude sessionstart dropped a stale /clear hand-off")
+    return
+  }
 
   process.stdout.write(
     JSON.stringify({
