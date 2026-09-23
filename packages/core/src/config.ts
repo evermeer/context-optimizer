@@ -313,11 +313,9 @@ export function formatStatsTable(rows: ResultRow[], now = new Date()): string {
     ...metrics.map((metric, index) => [metric, ...columns.map((column) => column[index])]),
   ]
   const widths = table[0].map((_, col) => Math.max(...table.map((row) => row[col].length)))
-  return table
-    .map((row) =>
-      row
-        .map((cell, col) => (col === 0 ? cell.padEnd(widths[col]) : cell.padStart(widths[col])))
-        .join("  "),
-    )
-    .join("\n")
+  // Markdown table, padded so it also reads cleanly as plain text in a terminal.
+  const line = (row: string[]) =>
+    "| " + row.map((cell, col) => (col === 0 ? cell.padEnd(widths[col]) : cell.padStart(widths[col]))).join(" | ") + " |"
+  const align = "| " + widths.map((width, col) => (col === 0 ? ":" + "-".repeat(width - 1) : "-".repeat(width - 1) + ":")).join(" | ") + " |"
+  return [line(table[0]), align, ...table.slice(1).map(line)].join("\n")
 }

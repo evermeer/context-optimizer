@@ -137,10 +137,12 @@ test("recordOptimizationStats appends CSV rows and the stats table aggregates th
   assert.match(rows[1].timestamp, /^\d{4}-\d{2}-\d{2}T/)
 
   const table = core.formatStatsTable(rows)
-  assert.match(table, /metric\s+last\s+session\s+today\s+week\s+month\s+overall/)
+  assert.match(table, /^\| metric[\s|]+last[\s|]+session[\s|]+today[\s|]+week[\s|]+month[\s|]+overall \|\n\| :-+ \| -+: \|/)
   // "last" and "session" columns cover only the newest row (s2), the rest cover both.
-  assert.match(table, /compactions\s+1\s+1\s+2\s+2\s+2\s+2/)
-  assert.match(table, /saved %\s+50%\s+50%\s+59%\s+59%\s+59%\s+59%/)
+  assert.match(table, /\| compactions[\s|]+1[\s|]+1[\s|]+2[\s|]+2[\s|]+2[\s|]+2 \|/)
+  assert.match(table, /\| saved %[\s|]+50%[\s|]+50%[\s|]+59%[\s|]+59%[\s|]+59%[\s|]+59% \|/)
+  // Every line is the same width, so it stays aligned as plain text too.
+  assert.equal(new Set(table.split("\n").map((l) => l.length)).size, 1)
 })
 
 test("runOptimizer fails open when the bridge is missing", async () => {

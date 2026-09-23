@@ -171,7 +171,7 @@ export const ContextOptimizerPlugin = async (dependencies: any = {}) => {
       }
 
       if (commandArgs === "stats") {
-        reply(buildCommandOutput("cumulative pruning statistics", `\n\`\`\`\n${formatStatsTable(readResults())}\n\`\`\`\n`))
+        reply(buildCommandOutput("cumulative pruning statistics", formatStatsTable(readResults())))
         return
       }
 
