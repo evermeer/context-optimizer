@@ -163,6 +163,13 @@ function sessionFile(sessionID: string): string {
   return path.join(claudeSessionDir(), `${sessionID.replace(/[^\w.-]/g, "_")}.md`)
 }
 
+// The outcome report for a compaction that Claude still runs (auto-compact,
+// or a manual one the optimizer couldn't replace). PreCompact discards
+// systemMessage, so it is shown from SessionStart (source "compact") instead.
+function outcomeFile(sessionID: string): string {
+  return path.join(claudeSessionDir(), `${sessionID.replace(/[^\w.-]/g, "_")}.outcome.txt`)
+}
+
 // /clear starts a new session ID, so the manual hand-off is keyed by the
 // transcript's project directory, which both sessions share.
 function clearFile(transcriptPath: string): string {
@@ -235,44 +242,59 @@ async function precompact(input: HookInput): Promise<void> {
     return
   }
 
+  fs.mkdirSync(claudeSessionDir(), { recursive: true })
   if (result.ok && result.optimizedContext) {
-    fs.mkdirSync(claudeSessionDir(), { recursive: true })
     // Only the restored content (no stats) travels through the hand-off file:
-    // SessionStart additionalContext is fed to the model. Stats are shown to
-    // the user via PreCompact's systemMessage, which renders in the UI without
-    // entering Claude's context, and persisted via recordOptimizationStats.
+    // SessionStart additionalContext is fed to the model. Stats are persisted
+    // via recordOptimizationStats and shown to the user through the outcome
+    // file below.
     fs.writeFileSync(sessionFile(sessionID), result.optimizedContext, "utf8")
     recordOptimizationStats(sessionID, result, "claude-code", trigger)
   }
+  // Claude Code discards a PreCompact hook's systemMessage, and exiting 2 here
+  // would block the compaction; SessionStart shows this report instead, as a
+  // systemMessage that renders in the UI without entering Claude's context.
+  fs.writeFileSync(outcomeFile(sessionID), formatOutcomeMessage(result), "utf8")
+}
 
-  process.stdout.write(JSON.stringify({ systemMessage: formatOutcomeMessage(result) }))
+/** Reads and removes a hand-off file; `stale` is true when it is older than the hand-off window. */
+function consume(file: string): { text: string; stale: boolean } | null {
+  if (!fs.existsSync(file)) return null
+  const stale = Date.now() - fs.statSync(file).mtimeMs > CLEAR_HANDOFF_MAX_AGE_MS
+  const text = fs.readFileSync(file, "utf8")
+  fs.rmSync(file, { force: true })
+  return { text, stale }
 }
 
 function sessionstart(input: HookInput): void {
   let file: string
-  if (input.source === "compact") file = sessionFile(input.session_id || "unknown")
-  else if (input.source === "clear" && input.transcript_path) file = clearFile(input.transcript_path)
+  let outcome: { text: string; stale: boolean } | null = null
+  if (input.source === "compact") {
+    const sessionID = input.session_id || "unknown"
+    file = sessionFile(sessionID)
+    // A stale report belongs to a compaction that never finished; drop it.
+    outcome = consume(outcomeFile(sessionID))
+    if (outcome?.stale) outcome = null
+  } else if (input.source === "clear" && input.transcript_path) file = clearFile(input.transcript_path)
   else return
 
-  if (!fs.existsSync(file)) return
-
-  const stale = Date.now() - fs.statSync(file).mtimeMs > CLEAR_HANDOFF_MAX_AGE_MS
-  const optimized = fs.readFileSync(file, "utf8")
-  fs.rmSync(file, { force: true })
-  if (input.source === "clear" && stale) {
+  let handoff = consume(file)
+  if (handoff && input.source === "clear" && handoff.stale) {
     writeLog("[context-optimizer] claude sessionstart dropped a stale /clear hand-off")
-    return
+    handoff = null
   }
+  if (!handoff && !outcome) return
 
-  process.stdout.write(
-    JSON.stringify({
-      hookSpecificOutput: {
-        hookEventName: "SessionStart",
-        additionalContext: `## Optimized Context\n\n${optimized}`,
-      },
-    }),
-  )
-  writeLog(`[context-optimizer] claude sessionstart injected optimized context (${optimized.length} chars)`)
+  const output: Record<string, unknown> = {}
+  if (outcome) output.systemMessage = outcome.text
+  if (handoff) {
+    output.hookSpecificOutput = {
+      hookEventName: "SessionStart",
+      additionalContext: `## Optimized Context\n\n${handoff.text}`,
+    }
+    writeLog(`[context-optimizer] claude sessionstart injected optimized context (${handoff.text.length} chars)`)
+  }
+  process.stdout.write(JSON.stringify(output))
 }
 
 function postcompact(input: HookInput): void {

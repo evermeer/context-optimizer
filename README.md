@@ -122,7 +122,7 @@ Claude Code hooks cannot rewrite the compaction context directly, so the adapter
 What happens next depends on how compaction was triggered:
 
 - **Manual `/compact` — plugin-only compact.** The hook blocks Claude's own compaction and tells you to run `/clear`. After `/clear`, the new session starts with only the optimized context, and Claude's LLM summary is skipped entirely. You have to type `/clear` yourself (hooks cannot run slash commands). A saved hand-off expires after 1 hour, so it never leaks into an unrelated `/clear` later.
-- **Auto-compact.** Claude's own compaction runs as usual on the full transcript; right after, the optimized context is added next to Claude's summary. It is not blocked, because blocking an auto-compact that fires at the context limit would fail the current request.
+- **Auto-compact.** Claude's own compaction runs as usual on the full transcript; right after, the optimized context is added next to Claude's summary. The savings report (`initial size`, `final size`, `% saved`) appears as a message once the compacted session starts. It isn't added to Claude's context. It is not blocked, because blocking an auto-compact that fires at the context limit would fail the current request.
 
 Both hooks fail open: if the optimizer fails or the context is below `min_chars`, nothing is blocked and Claude Code compacts as usual.
 

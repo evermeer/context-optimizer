@@ -235,3 +235,50 @@ test("debug mode reports why the plugin produced no result", () => {
   assert.match(post.stderr, /Plugin result: {2}none \(skipped: context size 4 chars is below min_chars 2000\)/)
   assert.equal(runWithEnv([CLI, "debug", "latest", "missing-session"], undefined, env).status, 1)
 })
+
+// --- auto-compact outcome report ---
+
+test("auto-compact outcome is shown via SessionStart systemMessage, not PreCompact", () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "ctxopt-claude-"))
+  const env = { CONTEXT_OPTIMIZER_HOME: home, CONTEXT_OPTIMIZER_CLI: fakeBridge(home, "OPTIMIZED") }
+
+  const pre = runWithEnv([HOOK, "precompact"], { session_id: "s3", trigger: "auto", transcript_path: bigTranscript() }, env)
+  assert.equal(pre.status, 0, "auto-compact is never blocked")
+  assert.equal(pre.stdout, "", "PreCompact discards systemMessage, so it emits none")
+
+  const start = runWithEnv([HOOK, "sessionstart"], { session_id: "s3", source: "compact" }, env)
+  assert.equal(start.status, 0)
+  const output = JSON.parse(start.stdout)
+  assert.match(output.systemMessage, /optimized context emitted\. Initial size: 5000 chars, final size: 9 chars/)
+  assert.match(output.hookSpecificOutput.additionalContext, /## Optimized Context\n\nOPTIMIZED/)
+  assert.doesNotMatch(output.hookSpecificOutput.additionalContext, /Initial size/, "stats stay out of Claude's context")
+
+  const again = runWithEnv([HOOK, "sessionstart"], { session_id: "s3", source: "compact" }, env)
+  assert.equal(again.stdout, "", "the report is shown once")
+})
+
+test("a failed auto-compact optimization is still reported, without injected context", () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "ctxopt-claude-"))
+  const bridge = path.join(home, "failing_bridge.py")
+  fs.writeFileSync(bridge, 'import json, sys\nsys.stdin.read()\nprint(json.dumps({"ok": False, "error_code": "dependency_missing", "message": "no torch"}))\n')
+  const env = { CONTEXT_OPTIMIZER_HOME: home, CONTEXT_OPTIMIZER_CLI: bridge }
+
+  assert.equal(runWithEnv([HOOK, "precompact"], { session_id: "s4", trigger: "auto", transcript_path: bigTranscript() }, env).status, 0)
+  const output = JSON.parse(runWithEnv([HOOK, "sessionstart"], { session_id: "s4", source: "compact" }, env).stdout)
+
+  assert.match(output.systemMessage, /optimization skipped: no torch/)
+  assert.equal(output.hookSpecificOutput, undefined)
+})
+
+test("a stale outcome report is dropped", () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "ctxopt-claude-"))
+  const outcome = path.join(home, "claude-sessions", "s5.outcome.txt")
+  fs.mkdirSync(path.dirname(outcome), { recursive: true })
+  fs.writeFileSync(outcome, "[context-optimizer] old report", "utf8")
+  const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000)
+  fs.utimesSync(outcome, twoHoursAgo, twoHoursAgo)
+
+  const start = runHook("sessionstart", { session_id: "s5", source: "compact" }, home)
+  assert.equal(start.stdout, "")
+  assert.equal(fs.existsSync(outcome), false)
+})
