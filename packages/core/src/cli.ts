@@ -14,8 +14,10 @@ import {
   resolveEffectiveConfig,
   writeStoredConfig,
 } from "./config.js"
+import { findDebugCompaction, isDebugEnabled, setDebugEnabled } from "./debug.js"
 import { detectClaudeCode, detectOpenCode } from "./detect.js"
 import { install } from "./install.js"
+import { debugDir } from "./paths.js"
 
 const HELP = `@evermeer/context-optimizer
 
@@ -25,6 +27,7 @@ Usage:
   context-optimizer optimize          (reads a JSON payload from stdin, prints the result)
   context-optimizer stats             (show cumulative pruning/compaction statistics)
   context-optimizer config [get|set|reset] [key] [value]
+  context-optimizer debug [on|off|status|latest] [session-id]
 
 install
   Without flags the installer detects OpenCode and Claude Code and installs
@@ -38,6 +41,12 @@ config
   context-optimizer config set <key> <value>      update a safe setting
   context-optimizer config reset                  clear saved settings
   safe keys: ${SAFE_CONFIG_KEYS.join(", ")}
+
+debug (Claude Code)
+  context-optimizer debug on                     run the plugin and Claude's native compaction side by side
+  context-optimizer debug off                    back to plugin-only manual /compact (default)
+  context-optimizer debug status                 show whether debug mode is on and where logs go
+  context-optimizer debug latest [session-id]    print the newest compared compaction's files as JSON
 `
 
 function runConfig(args: string[]): number {
@@ -84,6 +93,46 @@ function runConfig(args: string[]): number {
   return 0
 }
 
+function runDebug(args: string[]): number {
+  const [action = "status", sessionID] = args
+
+  if (action === "on" || action === "off") {
+    setDebugEnabled(action === "on")
+    const override = process.env.CONTEXT_OPTIMIZER_DEBUG
+      ? ` (note: CONTEXT_OPTIMIZER_DEBUG=${process.env.CONTEXT_OPTIMIZER_DEBUG} overrides this setting)`
+      : ""
+    process.stdout.write(
+      action === "on"
+        ? `[context-optimizer] debug mode on${override}. Compaction now runs both the plugin and Claude's native compact; ` +
+            `the session continues with the native summary. Both results are saved under ${debugDir()}/<session-id>/<timestamp>/. ` +
+            "Compare them in a new session with /context-optimizer:evaluate.\n"
+        : `[context-optimizer] debug mode off${override}. Manual /compact is plugin-only again.\n`,
+    )
+    return 0
+  }
+
+  if (action === "status") {
+    process.stdout.write(`[context-optimizer] debug mode ${isDebugEnabled() ? "on" : "off"}. Logs: ${debugDir()}\n`)
+    return 0
+  }
+
+  if (action === "latest") {
+    const compaction = findDebugCompaction(sessionID)
+    if (!compaction) {
+      process.stderr.write(
+        `No debug compaction found${sessionID ? ` for session ${sessionID}` : ""} in ${debugDir()}. ` +
+          "Turn debug mode on and compact first.\n",
+      )
+      return 1
+    }
+    process.stdout.write(`${JSON.stringify(compaction, null, 2)}\n`)
+    return 0
+  }
+
+  process.stderr.write("Usage: context-optimizer debug [on|off|status|latest] [session-id]\n")
+  return 1
+}
+
 async function main(): Promise<number> {
   const [command, ...args] = process.argv.slice(2)
   const flags = new Set(args)
@@ -124,6 +173,9 @@ async function main(): Promise<number> {
 
     case "config":
       return runConfig(args)
+
+    case "debug":
+      return runDebug(args)
 
     default:
       process.stdout.write(HELP)

@@ -131,6 +131,10 @@ export function installClaudeAdapter(): void {
   hooks.PreCompact = upsertHook(Array.isArray(hooks.PreCompact) ? hooks.PreCompact : [], {
     hooks: [{ type: "command", command: nodeCommand("precompact") }],
   })
+  // Only does work in debug mode: captures Claude's native compact summary.
+  hooks.PostCompact = upsertHook(Array.isArray(hooks.PostCompact) ? hooks.PostCompact : [], {
+    hooks: [{ type: "command", command: nodeCommand("postcompact") }],
+  })
   hooks.SessionStart = upsertHook(Array.isArray(hooks.SessionStart) ? hooks.SessionStart : [], {
     matcher: "compact|clear",
     hooks: [{ type: "command", command: nodeCommand("sessionstart") }],
@@ -177,5 +181,5 @@ export function install(options: InstallOptions = {}): void {
 
   log("Done.")
   if (targetOpenCode) log("- OpenCode: restart OpenCode; the plugin loads automatically.")
-  if (targetClaude) log("- Claude Code: restart Claude Code; the PreCompact/SessionStart hooks are active.")
+  if (targetClaude) log("- Claude Code: restart Claude Code; the PreCompact/PostCompact/SessionStart hooks are active.")
 }

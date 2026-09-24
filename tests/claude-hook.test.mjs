@@ -145,3 +145,93 @@ test("transcriptToDocs never optimizes away protected tools and skips orphan res
   assert.ok(docs.includes("[tool write] wrote a.ts again"))
   assert.ok(!docs.some((doc) => doc.includes("orphan result")))
 })
+
+// --- debug mode ---
+
+const CLI = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "dist", "cli.js")
+
+/** A stand-in Python bridge that always returns the given optimized context. */
+function fakeBridge(home, optimized) {
+  const file = path.join(home, "fake_bridge.py")
+  fs.writeFileSync(
+    file,
+    `import json, sys\nsys.stdin.read()\nprint(json.dumps({"ok": True, "optimized_context": ${JSON.stringify(optimized)}, "initial_size": 5000, "final_size": ${optimized.length}}))\n`,
+    "utf8",
+  )
+  return file
+}
+
+function runWithEnv(args, input, env) {
+  return childProcess.spawnSync("node", args, {
+    input: input === undefined ? "" : JSON.stringify(input),
+    encoding: "utf8",
+    env: { ...process.env, ...env },
+  })
+}
+
+function bigTranscript() {
+  return writeTranscript([transcriptLine("user", "x".repeat(3000)), transcriptLine("assistant", "y".repeat(3000))])
+}
+
+test("manual precompact without debug mode still blocks native compaction", () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "ctxopt-claude-"))
+  const env = { CONTEXT_OPTIMIZER_HOME: home, CONTEXT_OPTIMIZER_CLI: fakeBridge(home, "OPTIMIZED") }
+  const result = runWithEnv([HOOK, "precompact"], { session_id: "s1", trigger: "manual", transcript_path: bigTranscript() }, env)
+
+  assert.equal(result.status, 2)
+  assert.equal(fs.existsSync(path.join(home, "debug")), false)
+})
+
+test("debug mode runs both compactions, saves both results, and reports the sizes", () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "ctxopt-claude-"))
+  const env = { CONTEXT_OPTIMIZER_HOME: home, CONTEXT_OPTIMIZER_CLI: fakeBridge(home, "OPTIMIZED") }
+  assert.equal(runWithEnv([CLI, "debug", "on"], undefined, env).status, 0)
+
+  const transcript = bigTranscript()
+  const pre = runWithEnv([HOOK, "precompact"], { session_id: "s1", trigger: "manual", transcript_path: transcript }, env)
+  assert.equal(pre.status, 0, "native compaction is not blocked")
+  assert.equal(fs.existsSync(path.join(home, "claude-sessions")), false, "no hand-off: the session keeps the native summary")
+
+  const native = "N".repeat(18)
+  const post = runWithEnv([HOOK, "postcompact"], { session_id: "s1", trigger: "manual", compact_summary: native }, env)
+  assert.equal(post.status, 2, "exit 2 shows the report to the user")
+  assert.match(post.stderr, /Native compact: 18 chars/)
+  assert.match(post.stderr, /Plugin result: {2}9 chars, 50% of the native size \(50% smaller\)/)
+  assert.match(post.stderr, /evaluate s1/)
+
+  const [stamp] = fs.readdirSync(path.join(home, "debug", "s1")).filter((name) => name !== "index.md")
+  const dir = path.join(home, "debug", "s1", stamp)
+  assert.equal(fs.readFileSync(path.join(dir, "plugin.txt"), "utf8"), "OPTIMIZED")
+  assert.equal(fs.readFileSync(path.join(dir, "native.txt"), "utf8"), native)
+  const index = fs.readFileSync(path.join(home, "debug", "s1", "index.md"), "utf8")
+  assert.match(index, new RegExp(`\\[plugin\\]\\(${stamp}/plugin.txt\\)`))
+  assert.match(index, /\| 50% \|/)
+
+  const latest = runWithEnv([CLI, "debug", "latest"], undefined, env)
+  assert.equal(latest.status, 0)
+  const info = JSON.parse(latest.stdout)
+  assert.equal(info.sessionID, "s1")
+  assert.equal(info.plugin, path.join(dir, "plugin.txt"))
+  assert.equal(info.native, path.join(dir, "native.txt"))
+  assert.equal(info.evaluation, path.join(dir, "evaluation.md"))
+  assert.equal(info.nativeChars, 18)
+  assert.equal(info.pluginChars, 9)
+
+  assert.equal(runWithEnv([CLI, "debug", "off"], undefined, env).status, 0)
+  const quiet = runWithEnv([HOOK, "postcompact"], { session_id: "s1", trigger: "manual", compact_summary: native }, env)
+  assert.equal(quiet.status, 0, "postcompact does nothing outside debug mode")
+  assert.equal(quiet.stderr, "")
+})
+
+test("debug mode reports why the plugin produced no result", () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "ctxopt-claude-"))
+  const env = { CONTEXT_OPTIMIZER_HOME: home, CONTEXT_OPTIMIZER_DEBUG: "1" }
+  const small = writeTranscript([transcriptLine("user", "tiny")])
+
+  assert.equal(runWithEnv([HOOK, "precompact"], { session_id: "s2", trigger: "auto", transcript_path: small }, env).status, 0)
+  const post = runWithEnv([HOOK, "postcompact"], { session_id: "s2", trigger: "auto", compact_summary: "summary" }, env)
+
+  assert.equal(post.status, 2)
+  assert.match(post.stderr, /Plugin result: {2}none \(skipped: context size 4 chars is below min_chars 2000\)/)
+  assert.equal(runWithEnv([CLI, "debug", "latest", "missing-session"], undefined, env).status, 1)
+})

@@ -32,6 +32,11 @@ export function claudeSessionDir(): string {
   return path.join(dataDir(), "claude-sessions")
 }
 
+/** Debug-mode logs: one folder per session, one subfolder per compaction. */
+export function debugDir(): string {
+  return path.join(dataDir(), "debug")
+}
+
 export function opencodeConfigDir(): string {
   return path.join(os.homedir(), ".config", "opencode")
 }

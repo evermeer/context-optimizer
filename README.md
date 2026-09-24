@@ -117,6 +117,7 @@ Claude Code hooks cannot rewrite the compaction context directly, so the adapter
 
 1. **PreCompact hook** — before compaction runs, the transcript context is optimized via the Python bridge and the result is stored under `~/.context-optimizer/claude-sessions/`.
 2. **SessionStart hook** (matcher `compact|clear`) — the stored optimized context is injected into the fresh session as additional context and the hand-off file is removed.
+3. **PostCompact hook** — only active in [debug mode](#debug-mode-plugin-vs-native-compact): captures Claude's native summary for comparison.
 
 What happens next depends on how compaction was triggered:
 
@@ -145,12 +146,49 @@ Slash commands (installed as markdown commands in `~/.claude/commands/context-op
 | `/context-optimizer:stats` | Show cumulative pruning/compaction stats (`context-optimizer stats`) |
 | `/context-optimizer:compact` | Run one compaction pass on the current conversation (`context-optimizer optimize`) |
 | `/context-optimizer:config [get\|set\|reset]` | Show or update safe settings (`context-optimizer config`) |
+| `/context-optimizer:debugon` | Turn [debug mode](#debug-mode-plugin-vs-native-compact) on (`context-optimizer debug on`) |
+| `/context-optimizer:debugoff` | Turn debug mode off, the default (`context-optimizer debug off`) |
+| `/context-optimizer:evaluate [session-id]` | Compare the newest debug compaction's plugin and native results and save an evaluation (run it in a new session) |
 
 These shell out to the same `context-optimizer` CLI (`npx @evermeer/context-optimizer <cmd>`) that backs the OpenCode commands, so config and stats are shared across both platforms.
 
+#### Debug mode: plugin vs. native compact
+
+Debug mode lets you check whether the plugin's context is actually better than Claude's own summary on your sessions. It is off by default. Turn it on with `/context-optimizer:debugon` and off with `/context-optimizer:debugoff`. You can also set the `CONTEXT_OPTIMIZER_DEBUG=1` env var, which overrides the stored setting.
+
+While debug mode is on, every compaction (manual `/compact` and auto-compact) runs **both**:
+
+1. **PreCompact** runs the optimizer as usual and saves its result, but blocks nothing and hands nothing off. Claude's native compaction is not canceled, and the session continues on the native summary alone, as if the plugin weren't installed. Debug runs are not counted in `/context-optimizer:stats`.
+2. **PostCompact** captures Claude's native summary, saves it next to the plugin result, and shows a report:
+
+```
+[context-optimizer debug] manual compaction: native and plugin results saved.
+Native compact: 12,345 chars
+Plugin result:  6,000 chars, 49% of the native size (51% smaller)
+Original context: 80,000 chars
+Files: ~/.context-optimizer/debug/<session-id>/2026-09-24T10-15-30-123Z
+Compare them in a new session with /context-optimizer:evaluate <session-id>
+```
+
+Each compaction gets its own folder, so the three files that belong together sit side by side. A per-session `index.md` lists every compaction with sizes and links:
+
+```
+~/.context-optimizer/debug/<session-id>/
+├── index.md                         one row per compaction: sizes, plugin-vs-native %, links
+└── <timestamp>/
+    ├── plugin.txt                   context-optimizer's result
+    ├── native.txt                   Claude's own compact summary
+    ├── evaluation.md                written by /context-optimizer:evaluate
+    └── meta.json                    sizes and plugin status
+```
+
+To evaluate, start a new Claude Code session (so nothing else is in its context) and run `/context-optimizer:evaluate`, or `/context-optimizer:evaluate <session-id>` for a specific session. It picks the newest debug compaction and compares both files on task continuity, key facts, fidelity, noise and size. It writes a verdict with its reasoning to `evaluation.md` in the same folder. `context-optimizer debug latest [session-id]` prints that compaction's file paths and sizes as JSON.
+
+Debug mode needs the `PostCompact` hook. Installs before this version only registered PreCompact and SessionStart, so re-run `npx @evermeer/context-optimizer install --claude` once.
+
 ## Configuration
 
-All state lives in `~/.context-optimizer/` (override with the `CONTEXT_OPTIMIZER_HOME` env var): `config.json`, `stats.json`, `context-optimizer.log`, and the Python bridge.
+All state lives in `~/.context-optimizer/` (override with the `CONTEXT_OPTIMIZER_HOME` env var): `config.json`, `stats.json`, `context-optimizer.log`, the Python bridge, and the `debug/` logs.
 
 Environment variables win over `config.json`, which wins over defaults:
 
@@ -167,6 +205,7 @@ Environment variables win over `config.json`, which wins over defaults:
 | `embed_model` | `CONTEXT_OPTIMIZER_EMBED_MODEL` | `all-MiniLM-L6-v2` | HuggingFace embedding model used for deduplication |
 | `compressor_model` | `CONTEXT_OPTIMIZER_COMPRESSOR_MODEL` | _(auto by device)_ | LLMLingua-2 model used for compression; unset lets the bridge pick by device (see below) |
 | `model_limits` | `CONTEXT_OPTIMIZER_MODEL_LIMITS` | `{}` | Per-model overrides, e.g. `{"gpt-4.1": {"compression_rate": 0.65, "max_chunks": 8}}` |
+| — | `CONTEXT_OPTIMIZER_DEBUG` | off | `1`/`true` forces [debug mode](#debug-mode-plugin-vs-native-compact) on, `0`/`false` forces it off; unset uses `/context-optimizer:debugon`/`debugoff` |
 | — | `CONTEXT_OPTIMIZER_PYTHON` | `py -3` (Windows) / `python3` | Python interpreter used for the bridge |
 | — | `CONTEXT_OPTIMIZER_CLI` | `~/.context-optimizer/python/context_optimizer_cli.py` | Path to the Python bridge script |
 

@@ -13,6 +13,12 @@
  *  - "sessionstart": runs on the SessionStart hook (matcher "compact|clear")
  *                    and injects the stored optimized context into the fresh
  *                    session as additionalContext.
+ *  - "postcompact":  runs on the PostCompact hook; only does work in debug
+ *                    mode (see core/src/debug.ts).
+ *
+ * In debug mode precompact never blocks or hands off: Claude's native
+ * compaction runs untouched, and the plugin result is saved next to the native
+ * summary that postcompact captures, for a side-by-side comparison.
  *
  * Both phases fail open: on any error the hook does not block and Claude Code
  * proceeds untouched.
@@ -24,6 +30,7 @@ import { pathToFileURL } from "node:url"
 
 import { runOptimizer } from "../../core/src/bridge.js"
 import { recordOptimizationStats, resolveEffectiveConfig } from "../../core/src/config.js"
+import { isDebugEnabled, recordNativeDebug, recordPluginDebug } from "../../core/src/debug.js"
 import { writeLog } from "../../core/src/log.js"
 import { claudeSessionDir } from "../../core/src/paths.js"
 import { DEFAULT_QUERY, formatOutcomeMessage } from "../../core/src/payload.js"
@@ -39,6 +46,7 @@ interface HookInput {
   trigger?: string
   source?: string
   custom_instructions?: string
+  compact_summary?: string
 }
 
 async function readStdin(): Promise<string> {
@@ -168,8 +176,11 @@ const CLEAR_HANDOFF_MAX_AGE_MS = 60 * 60 * 1000
 
 async function precompact(input: HookInput): Promise<void> {
   const sessionID = input.session_id || "unknown"
+  const trigger = input.trigger || ""
+  const debug = isDebugEnabled()
   if (!input.transcript_path || !fs.existsSync(input.transcript_path)) {
     writeLog(`[context-optimizer] claude precompact skipped: no transcript (session=${sessionID})`)
+    if (debug) recordPluginDebug(sessionID, trigger, { ok: false, status: "skipped", reason: "no transcript" })
     return
   }
 
@@ -181,6 +192,10 @@ async function precompact(input: HookInput): Promise<void> {
     writeLog(
       `[context-optimizer] claude precompact skipped: context size ${size} chars is below the threshold of ${min_chars} chars (docs=${docs.length}).`,
     )
+    if (debug) {
+      const reason = `context size ${size} chars is below min_chars ${min_chars}`
+      recordPluginDebug(sessionID, trigger, { ok: false, status: "skipped", reason }, size)
+    }
     return
   }
 
@@ -195,6 +210,15 @@ async function precompact(input: HookInput): Promise<void> {
   })
 
   writeLog(`claude precompact: ${formatOutcomeMessage(result)}`)
+
+  // Debug mode: save the result for comparison only. Nothing is blocked or
+  // handed off, stats are not recorded (the result is not used), and the
+  // PostCompact hook reports both sizes once the native summary exists.
+  if (debug) {
+    const dir = recordPluginDebug(sessionID, trigger, result, size)
+    writeLog(`[context-optimizer] debug: plugin result saved in ${dir}; native compaction proceeds`)
+    return
+  }
 
   // Manual /compact: the plugin output replaces Claude's summary. Block the
   // native compaction and hand off via /clear; exit 2 + stderr is shown to the
@@ -218,7 +242,7 @@ async function precompact(input: HookInput): Promise<void> {
     // the user via PreCompact's systemMessage, which renders in the UI without
     // entering Claude's context, and persisted via recordOptimizationStats.
     fs.writeFileSync(sessionFile(sessionID), result.optimizedContext, "utf8")
-    recordOptimizationStats(sessionID, result, "claude-code", input.trigger || "")
+    recordOptimizationStats(sessionID, result, "claude-code", trigger)
   }
 
   process.stdout.write(JSON.stringify({ systemMessage: formatOutcomeMessage(result) }))
@@ -251,6 +275,19 @@ function sessionstart(input: HookInput): void {
   writeLog(`[context-optimizer] claude sessionstart injected optimized context (${optimized.length} chars)`)
 }
 
+function postcompact(input: HookInput): void {
+  if (!isDebugEnabled()) return
+
+  const summary = typeof input.compact_summary === "string" ? input.compact_summary : ""
+  if (!summary) writeLog("[context-optimizer] debug: PostCompact had no compact_summary; saving an empty native.txt")
+  const { report } = recordNativeDebug(input.session_id || "unknown", input.trigger || "", summary)
+  writeLog(report)
+  // PostCompact discards systemMessage; exit 2 shows stderr to the user and
+  // cannot affect the (already finished) compaction.
+  process.stderr.write(report)
+  process.exitCode = 2
+}
+
 async function main(): Promise<void> {
   const mode = process.argv[2]
   let input: HookInput = {}
@@ -262,6 +299,7 @@ async function main(): Promise<void> {
 
   if (mode === "precompact") await precompact(input)
   else if (mode === "sessionstart") sessionstart(input)
+  else if (mode === "postcompact") postcompact(input)
 }
 
 // Only run as a hook when executed directly; tests import transcriptToDocs.
