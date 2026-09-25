@@ -4,10 +4,15 @@
 [![license](https://img.shields.io/npm/l/@evermeer/context-optimizer)](https://github.com/evermeer/context-optimizer/blob/main/LICENSE)
 [![node](https://img.shields.io/node/v/@evermeer/context-optimizer?logo=node.js&logoColor=white)](https://nodejs.org)
 [![python](https://img.shields.io/badge/python-3.9%2B-blue?logo=python&logoColor=white)](https://www.python.org)
-[![status](https://img.shields.io/badge/status-public_test-orange)](#)
+[![status](https://img.shields.io/badge/status-experimenal-orange)](#)
 [![platforms](https://img.shields.io/badge/for-OpenCode%20%26%20Claude%20Code-8A2BE2)](#)
 
 **Keep your coding agent's context small.** When a session gets compacted, Context Optimizer reranks the relevant parts, drops duplicates, and compresses the rest with a local ML pipeline ([LLMLingua-2](https://github.com/microsoft/LLMLingua) + [Sentence Transformers](https://github.com/huggingface/sentence-transformers)) — so more of the window stays useful and fewer tokens get billed. 
+
+> [!WARNING]
+> After adding the slash commands for enabeling a debug mode plus an evaluation (debugon, debugoff and evaluate)
+> which will compare the plugin's compaction with the native compaction, i found out that the plugins context result is
+> considerably smaller but also often misses vital context. I am currently fine tuning the compact pipeline to get a better result, but it is still not as good as the native compaction. I will keep you updated on this.
 
 ## Highlights
 
@@ -16,7 +21,6 @@
 - **Two platforms, one config** — works with both OpenCode and Claude Code, sharing a single config and stats store.
 - **Tunable or zero-config** — every model and threshold is configurable per-model or globally, but the defaults just work.
 - **GPU or CPU** — uses CUDA when available, and falls back to lighter CPU models automatically.
-- **Fully automatic** — runs on every compaction, and optionally on every chat turn (OpenCode only). No (extra) need to execute `/compact` yourself.
 
 ![Dedupe Rerank Compress](./animation.svg)
 
